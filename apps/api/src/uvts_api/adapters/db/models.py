@@ -1,0 +1,46 @@
+from datetime import UTC, datetime
+from typing import Any
+from uuid import uuid4
+
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from uvts_api.adapters.db.base import Base
+from uvts_api.domain.enums import TestStatus
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class AnonymousSession(Base):
+    __tablename__ = "anonymous_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    tests: Mapped[list["TestRun"]] = relationship(back_populates="owner")
+
+
+class TestRun(Base):
+    __tablename__ = "test_runs"
+    __table_args__ = (Index("ix_test_runs_owner_updated", "owner_session_id", "updated_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    owner_session_id: Mapped[str] = mapped_column(
+        ForeignKey("anonymous_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), default=TestStatus.DRAFT.value)
+    state_version: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    owner: Mapped[AnonymousSession] = relationship(back_populates="tests")

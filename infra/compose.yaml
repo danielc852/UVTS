@@ -1,0 +1,124 @@
+name: uvts
+
+x-api-environment: &api-environment
+  DATABASE_URL: postgresql+asyncpg://uvts:uvts@postgres:5432/uvts
+  REDIS_URL: redis://redis:6379/0
+  SESSION_SECRET: ${SESSION_SECRET:-local-development-only}
+  SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["http://localhost:5173"]}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-qwen/qwen3.8-27b}
+  PRIVATE_STORAGE_PATH: /data/documents
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: uvts
+      POSTGRES_USER: uvts
+      POSTGRES_PASSWORD: uvts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uvts -d uvts"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis-data:/data
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    environment: *api-environment
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - document-data:/data/documents
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/worker.Dockerfile
+    environment: *api-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "celery -A uvts_api.workers.celery_app:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5",
+        ]
+      interval: 10s
+      timeout: 8s
+      retries: 5
+    volumes:
+      - document-data:/data/documents
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_ENABLE_MOCKS: ${VITE_ENABLE_MOCKS:-true}
+    ports:
+      - "5173:5173"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  document-data:

@@ -50,14 +50,13 @@ Examples include:
 
 ## 5. Typical User Journey
 
-1. The writer uploads a PDF manual.
-2. UVTS checks that the file can be used.
-3. The writer chooses the types and number of questions.
-4. The writer chooses the topics and user viewpoints to include.
-5. UVTS creates a set of sample questions.
-6. The writer reviews the questions and starts the test.
-7. UVTS checks whether the information needed for each question exists in the manual.
-8. UVTS creates a report with results and suggested improvements.
+The complete journey stays on one page:
+
+1. The writer uploads a PDF manual and UVTS checks that it can be used.
+2. The writer generates questions using the suggested setup or adjusts the question settings.
+3. The writer reviews the complete question list.
+4. The writer starts the evaluation and watches its progress.
+5. UVTS reveals the report with results and suggested improvements below the evaluation.
 
 ## 6. Core Features
 
@@ -176,6 +175,8 @@ The suggested starting setup is:
 
 UVTS creates realistic questions based on the manual and the writer's choices.
 
+The UVTS AI agent uses Qwen3.8 27B through OpenRouter to create the question set.
+
 #### Rules for good questions
 
 Each question must:
@@ -213,6 +214,8 @@ Editing one question at a time is not included in the first version.
 ### 6.4 Automated Testing
 
 UVTS checks whether the manual contains the information needed for each generated question. It does not test whether an AI agent can write a correct answer.
+
+The UVTS AI agent uses Qwen3.8 27B through OpenRouter to perform this information-presence check.
 
 #### How the test works
 
@@ -279,6 +282,8 @@ Only questions marked Information found count toward X. The total is the number 
 
 The Basic Report explains the results and helps the writer decide what to improve.
 
+The UVTS AI agent uses Qwen3.8 27B through OpenRouter to group information gaps and suggest manual improvements and follow-up questions.
+
 #### Report contents
 
 The report includes:
@@ -339,25 +344,155 @@ Downloading the report as a PDF or spreadsheet is not part of the first version.
 - Failed or unfinished tests are clearly marked.
 - The language is understandable without technical knowledge.
 
-## 7. Main Screens
+### 6.6 AI Agent and Model Use
 
-### New Test
+UVTS uses one internal AI agent to support question generation, testing, and report recommendations. This agent is part of the UVTS service; it is not a chatbot shown to the writer.
 
-The writer uploads a manual and chooses the test settings.
+#### Selected service and model
 
-### Question Review
+- **AI service:** OpenRouter
+- **Model:** Qwen3.8 27B
+- **OpenRouter model ID:** `qwen/qwen3.8-27b`
+- **Official model reference:** [Qwen3.8 27B on OpenRouter](https://openrouter.ai/qwen/qwen3.8-27b)
 
-The writer reviews the generated questions, generates a new set, or starts the test.
+#### What the agent can do
 
-### Testing Progress
+- Read the text extracted from the uploaded manual.
+- Generate questions using the selected types, topics, viewpoints, and counts.
+- Identify the pieces of information needed for each question.
+- Check whether those pieces of information exist in the manual.
+- Connect found information to the correct manual pages.
+- Group missing information and suggest improvements and follow-up questions.
 
-The writer sees how many questions have been tested and whether any question needs to be tried again.
+#### What the agent must not do
 
-### Report
+- Generate or display an answer to a test question.
+- Use its own knowledge or internet information to fill a gap in the manual.
+- Mark information as found without supporting text and a real page reference.
+- Change the generated questions after a test starts.
+- Present its judgment as proof that the manual is factually correct or safe.
 
-The writer sees the overall results first, followed by individual questions, missing information, recommendations, and follow-up work.
+#### Service rules
 
-## 8. Important Product Rules
+- All model requests must go through the UVTS server. The OpenRouter access key must never be included in the browser or shown to the writer.
+- Each test must record the service, model ID, and model settings used so the result can be reviewed later.
+- UVTS must check that the model's output follows the required result format before showing it in the report.
+- If OpenRouter or the selected model is unavailable, UVTS should keep the document and test settings and offer Retry.
+- UVTS must not silently replace Qwen3.8 27B with another model. Any future model change must be recorded and tested before release.
+- Manual content sent to the model must follow the privacy and retention rules in Section 10.
+
+#### The feature is complete when
+
+- Question generation, information checking, and recommendations use `qwen/qwen3.8-27b` through OpenRouter.
+- The OpenRouter access key is only available on the UVTS server.
+- Every successful information-presence result follows the three agreed statuses and evidence rules.
+- No test result contains an AI-generated answer to the question.
+- A model or service failure shows a clear Retry option without losing the writer's work.
+
+## 7. Technical Direction and Stack Choice
+
+This section records the first-release application stack and why it fits UVTS. It is intended to prevent the project from adopting framework features that the product does not need. Dependency versions must be pinned in the implementation lockfiles rather than in this product specification.
+
+### 7.1 Selected application stack
+
+#### Browser application
+
+- **Build tool:** Vite
+- **Interface framework:** React with TypeScript
+- **Component system:** Astryx, following `uiux.md`
+- **Application style:** Client-rendered single-page application
+- **Server communication:** A typed HTTP API generated from or checked against the FastAPI OpenAPI contract
+
+The browser application owns the five-stage workspace, form interaction, progress display, accessibility behavior, and report presentation. It must not contain the OpenRouter key, process PDFs, or make direct model requests.
+
+#### Server application
+
+- **API framework:** FastAPI
+- **Data and model-output validation:** Pydantic
+- **Language:** Python
+- **PDF processing:** Python PDF libraries that preserve page provenance
+- **AI access:** Server-side OpenRouter client
+
+The server owns PDF validation and extraction, saved workflow state, question generation, evaluation, evidence verification, report data, retries, and deletion. Long-running evaluation must not depend on the lifetime of one HTTP request.
+
+The exact database, durable-job system, and deployment platform remain implementation decisions. Whatever is selected must preserve work across a browser reload and must not lose completed question results when another question fails.
+
+### 7.2 Why Vite and React fit UVTS
+
+UVTS is an interactive workspace rather than a public content website. The first release does not need search-engine indexing, server-rendered pages, React Server Components, or static generation. Its main interface stays on one page and changes in response to uploads, configuration, background progress, retries, and expandable evidence.
+
+Vite and React are selected because:
+
+- React fits the stateful, component-based workflow and is required by the selected Astryx component system.
+- Vite provides a focused development server and production build without introducing a second application server.
+- The production browser application can be deployed as static files and can communicate with the Python API over HTTP.
+- Vite supports TypeScript and React Fast Refresh, which keeps interface development quick.
+- Separating the browser application from the API keeps PDF processing, AI calls, credentials, and evidence validation on the server.
+
+This choice has costs:
+
+- Vite is a build tool rather than a complete application framework. The project must explicitly choose routing, API-state handling, form handling, error boundaries, and testing conventions.
+- Client-side routes such as `/tests/{testId}` require static-host fallback configuration so a direct browser reload returns the React application.
+- Vite transpiles TypeScript but does not perform full type checking, so the build and continuous-integration checks must run the TypeScript compiler separately.
+- The browser and API are separate applications, so API contract drift, cross-origin rules, local development, and deployment must be handled deliberately.
+
+Official references: [Vite guide](https://vite.dev/guide/), [Vite features](https://vite.dev/guide/features), and [React guidance for starting from a build tool](https://react.dev/learn/build-a-react-app-from-scratch).
+
+### 7.3 Why FastAPI is selected instead of Django
+
+FastAPI is selected because UVTS needs a focused JSON API for a separate React application. Its Python type annotations, Pydantic validation, JSON Schema support, and generated OpenAPI description fit the product's strict request, response, and AI-output formats. Python also has mature PDF-processing libraries and is a natural place to implement the OpenRouter workflow.
+
+Django remains a good framework, but its largest benefits are not yet central to the first release. UVTS currently has no decided account system, administration interface, content-management interface, or server-rendered form workflow. Using Django only as an API behind React would add its full application structure while still requiring a separate React application and an API layer.
+
+FastAPI also has costs that the implementation must address:
+
+- It does not choose the database, object-relational mapper, migrations, durable job runner, or administration interface.
+- Long-running PDF and AI work must use a durable worker design; in-process request background tasks are not sufficient for work that must survive restarts.
+- Authentication, permissions, retention, and operational tools will require explicit design if they enter the product scope.
+
+Django should be reconsidered if accounts, permissions, an internal administration interface, database-heavy workflows, or server-rendered screens become major product requirements. Django with HTMX would also be a reasonable lower-JavaScript alternative if Astryx and the React interface were no longer requirements.
+
+Official references: [FastAPI features](https://fastapi.tiangolo.com/features/) and [Django overview](https://docs.djangoproject.com/en/6.0/intro/overview/).
+
+### 7.4 Why Vite is selected instead of Next.js
+
+Next.js is useful when a React product needs server-side rendering, static generation, public search visibility, React Server Components, or a JavaScript full-stack server. UVTS already requires a Python server for PDF and AI processing, and its first-release workspace does not benefit materially from those rendering features.
+
+Using Next.js with FastAPI would create both a Node.js application server and a Python application server. Vite avoids that additional runtime and keeps the boundary simple: React in the browser and FastAPI on the server.
+
+Next.js should be reconsidered if UVTS later adds public report pages, content pages that need search visibility, server-rendered first loads, or a decision to move the backend into TypeScript.
+
+### 7.5 Stack comparison
+
+| Option | Strength for UVTS | Main drawback | First-release decision |
+| --- | --- | --- | --- |
+| Vite + React + FastAPI | Focused interactive UI, Astryx compatibility, strong Python PDF and AI support | Requires a clearly managed browser/API boundary | **Selected** |
+| Next.js + FastAPI | Adds server rendering and a full React framework | Adds a Node server without a current product need | Not selected |
+| React + Django API | Strong ORM, migrations, authentication, and administration | Many built-in features are not yet required; still needs a separate React application | Reconsider if accounts and administration become central |
+| Django templates + HTMX | One main application stack and less browser JavaScript | Does not fit the selected Astryx React system and provides a different interaction model | Valid only if the React/Astryx direction changes |
+
+### 7.6 Stack rules for the first release
+
+- Use Astryx as the React component and accessibility source of truth. Do not introduce a competing general-purpose component system without a documented reason.
+- Keep all PDF contents, AI prompts, AI calls, evidence validation, and secret values on the FastAPI side.
+- Derive or verify browser API types against FastAPI's OpenAPI contract rather than maintaining unrelated duplicate definitions.
+- Treat background evaluation as durable work. Closing or reloading the browser must not cancel it.
+- Do not add server rendering, a Node.js production server, an administration system, or an account framework until a product requirement needs it.
+- Revisit this decision if the assumptions in Sections 7.2–7.4 change.
+
+## 8. Main Page
+
+UVTS uses one vertically ordered workspace instead of separate workflow screens. It contains five sections:
+
+1. **Upload manual:** The writer uploads one manual and sees when it is ready.
+2. **Generate questions:** The writer uses the suggested setup or opens the question settings, then selects Generate questions.
+3. **Review questions:** The writer reviews the generated list, generates a new set, or selects Evaluate questions.
+4. **Evaluation:** The writer sees how many questions have been checked and whether any question needs to be tried again.
+5. **Report:** The writer sees the overall results, individual questions, missing information, recommendations, and follow-up work.
+
+Completed sections remain visible above the current section in a compact state. Future sections stay visible as locked placeholders that explain what must happen first. When a stage completes, the next section opens below it; UVTS does not navigate to another workflow page. Reloading the page restores the current test and stage.
+
+## 9. Important Product Rules
 
 1. One test uses one PDF manual.
 2. The manual can contain no more than 20 pages.
@@ -370,7 +505,7 @@ The writer sees the overall results first, followed by individual questions, mis
 9. Every recommendation must be supported by a test result.
 10. Replacing or deleting a manual also removes its unfinished questions and connected results.
 
-## 9. Privacy, Safety, and Ease of Use
+## 10. Privacy, Safety, and Ease of Use
 
 - Manuals and reports must be kept private.
 - Files and results must be protected while stored and transferred.
@@ -382,7 +517,7 @@ The writer sees the overall results first, followed by individual questions, mis
 - Error messages and instructions must use plain language.
 - UVTS must clearly explain that its results are suggestions and do not replace legal, safety, or expert review.
 
-## 10. What is Not Included in the First Version?
+## 11. What is Not Included in the First Version?
 
 - Testing more than one manual at the same time
 - Manuals longer than 20 pages
@@ -396,7 +531,7 @@ The writer sees the overall results first, followed by individual questions, mis
 - Downloading reports
 - Connections to support, document, or project-management tools
 
-## 11. Risks and How UVTS Should Handle Them
+## 12. Risks and How UVTS Should Handle Them
 
 ### AI judgment may not match a human judgment
 
@@ -418,7 +553,7 @@ UVTS should reject files with no readable text and clearly explain the problem. 
 
 UVTS saves the exact questions used in each test. Questions never change after that test begins.
 
-## 12. How We Will Know the First Version Is Ready
+## 13. How We Will Know the First Version Is Ready
 
 The first version is ready for a small group of users when:
 
@@ -431,7 +566,7 @@ The first version is ready for a small group of users when:
 - Human reviewers test a sample group of manuals and agree that most results are reasonable.
 - Privacy, deletion, keyboard use, and readable status labels have been tested.
 
-## 13. Possible Future Features
+## 14. Possible Future Features
 
 - Support for scanned PDFs
 - Longer manuals and more than one manual per test
@@ -444,7 +579,7 @@ The first version is ready for a small group of users when:
 - Connections to support-ticket and documentation systems
 - Separate checks for readability, consistency, and factual accuracy
 
-## 14. Decisions Still Needed
+## 15. Decisions Still Needed
 
 Before development begins, the team must decide:
 
@@ -454,3 +589,6 @@ Before development begins, the team must decide:
 - Whether a writer can stop a test while it is running
 - The expected waiting time for question generation and testing
 - How the team will check that UVTS results are accurate enough for release
+- Which database and durable-job system will preserve tests and completed results
+- How the Vite application and FastAPI service will be hosted and connected in each environment
+- Which browser versions the first release must support

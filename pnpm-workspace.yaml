@@ -1,0 +1,10 @@
+packages:
+  - apps/web
+allowBuilds:
+  '@astryxdesign/cli': true
+  '@astryxdesign/core': true
+  esbuild: true
+  msw: false
+minimumReleaseAgeExclude:
+  - '@astryxdesign/cli@0.4.6'
+  - '@astryxdesign/core@0.4.6'

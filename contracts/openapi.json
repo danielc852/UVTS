@@ -1,0 +1,1075 @@
+{
+  "components": {
+    "schemas": {
+      "CoverageCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "found": {
+            "minimum": 0.0,
+            "title": "Found",
+            "type": "integer"
+          },
+          "not_found": {
+            "minimum": 0.0,
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "partly_found": {
+            "minimum": 0.0,
+            "title": "Partly Found",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "found",
+          "partly_found",
+          "not_found",
+          "failed"
+        ],
+        "title": "CoverageCounts",
+        "type": "object"
+      },
+      "CoverageStatus": {
+        "enum": [
+          "found",
+          "partly_found",
+          "not_found",
+          "failed"
+        ],
+        "title": "CoverageStatus",
+        "type": "string"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "field_errors": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Errors"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          },
+          "request_id": {
+            "description": "ID used to correlate the response with server logs",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "request_id"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "EvaluationItem": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "questionId": {
+            "title": "Questionid",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvaluationStatus"
+          }
+        },
+        "required": [
+          "questionId",
+          "status"
+        ],
+        "title": "EvaluationItem",
+        "type": "object"
+      },
+      "EvaluationStatus": {
+        "enum": [
+          "waiting",
+          "checking",
+          "complete",
+          "failed"
+        ],
+        "title": "EvaluationStatus",
+        "type": "string"
+      },
+      "Evidence": {
+        "additionalProperties": false,
+        "properties": {
+          "extract": {
+            "title": "Extract",
+            "type": "string"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "extract"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "Gap": {
+        "additionalProperties": false,
+        "properties": {
+          "affectedQuestionIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affectedquestionids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/GapKind"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "whyItMatters": {
+            "title": "Whyitmatters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "whyItMatters",
+          "affectedQuestionIds",
+          "kind"
+        ],
+        "title": "Gap",
+        "type": "object"
+      },
+      "GapKind": {
+        "enum": [
+          "missing",
+          "incomplete"
+        ],
+        "title": "GapKind",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LiveResponse": {
+        "properties": {
+          "status": {
+            "const": "live",
+            "default": "live",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "LiveResponse",
+        "type": "object"
+      },
+      "ManualStatus": {
+        "enum": [
+          "checking",
+          "ready",
+          "invalid"
+        ],
+        "title": "ManualStatus",
+        "type": "string"
+      },
+      "ManualSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pageCount": {
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Pagecount",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ManualStatus"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "pageCount",
+          "status"
+        ],
+        "title": "ManualSummary",
+        "type": "object"
+      },
+      "Question": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/QuestionType"
+          },
+          "viewpoint": {
+            "$ref": "#/components/schemas/Viewpoint"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "type",
+          "topic",
+          "viewpoint"
+        ],
+        "title": "Question",
+        "type": "object"
+      },
+      "QuestionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "informationFound": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Informationfound"
+          },
+          "informationMissing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Informationmissing"
+          },
+          "informationNeeded": {
+            "title": "Informationneeded",
+            "type": "string"
+          },
+          "question": {
+            "$ref": "#/components/schemas/Question"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CoverageStatus"
+          }
+        },
+        "required": [
+          "question",
+          "status",
+          "informationNeeded"
+        ],
+        "title": "QuestionResult",
+        "type": "object"
+      },
+      "QuestionType": {
+        "enum": [
+          "Basic",
+          "Cross-paragraph",
+          "Edge-case"
+        ],
+        "title": "QuestionType",
+        "type": "string"
+      },
+      "QuestionTypeCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "basic": {
+            "maximum": 15.0,
+            "minimum": 0.0,
+            "title": "Basic",
+            "type": "integer"
+          },
+          "crossParagraph": {
+            "maximum": 15.0,
+            "minimum": 0.0,
+            "title": "Crossparagraph",
+            "type": "integer"
+          },
+          "edgeCase": {
+            "maximum": 15.0,
+            "minimum": 0.0,
+            "title": "Edgecase",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "basic",
+          "crossParagraph",
+          "edgeCase"
+        ],
+        "title": "QuestionTypeCounts",
+        "type": "object"
+      },
+      "ReadyResponse": {
+        "properties": {
+          "database": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Database",
+            "type": "string"
+          },
+          "redis": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Redis",
+            "type": "string"
+          },
+          "status": {
+            "const": "ready",
+            "default": "ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "ReadyResponse",
+        "type": "object"
+      },
+      "Recommendation": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "gapId": {
+            "title": "Gapid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/RecommendationPriority"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "priority",
+          "change",
+          "reason",
+          "gapId"
+        ],
+        "title": "Recommendation",
+        "type": "object"
+      },
+      "RecommendationPriority": {
+        "enum": [
+          "High",
+          "Medium",
+          "Low"
+        ],
+        "title": "RecommendationPriority",
+        "type": "string"
+      },
+      "Report": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/CoverageCounts"
+          },
+          "followUpQuestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Followupquestions",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/Gap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "isComplete": {
+            "title": "Iscomplete",
+            "type": "boolean"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "isComplete",
+          "counts",
+          "results",
+          "gaps",
+          "recommendations",
+          "followUpQuestions"
+        ],
+        "title": "Report",
+        "type": "object"
+      },
+      "SessionBootstrapResponse": {
+        "properties": {
+          "authenticated": {
+            "default": true,
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expires_in_seconds"
+        ],
+        "title": "SessionBootstrapResponse",
+        "type": "object"
+      },
+      "TestConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Topics",
+            "type": "array"
+          },
+          "totalQuestions": {
+            "default": 9,
+            "maximum": 15.0,
+            "minimum": 1.0,
+            "title": "Totalquestions",
+            "type": "integer"
+          },
+          "typeCounts": {
+            "$ref": "#/components/schemas/QuestionTypeCounts"
+          },
+          "viewpoints": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Viewpoints",
+            "type": "array"
+          }
+        },
+        "title": "TestConfiguration",
+        "type": "object"
+      },
+      "TestCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/TestConfiguration"
+          },
+          "currentStage": {
+            "$ref": "#/components/schemas/WorkflowStage",
+            "default": "upload"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluation": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationItem"
+            },
+            "title": "Evaluation",
+            "type": "array"
+          },
+          "manual": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Report"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "TestCreateRequest",
+        "type": "object"
+      },
+      "TestResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/TestConfiguration"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "currentStage": {
+            "$ref": "#/components/schemas/WorkflowStage"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluation": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationItem"
+            },
+            "title": "Evaluation",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "manual": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Report"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stateVersion": {
+            "minimum": 1.0,
+            "title": "Stateversion",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TestStatus"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentStage",
+          "configuration",
+          "questions",
+          "evaluation",
+          "id",
+          "status",
+          "stateVersion",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "TestResponse",
+        "type": "object"
+      },
+      "TestStatus": {
+        "enum": [
+          "draft",
+          "generating",
+          "questions_ready",
+          "evaluating",
+          "complete",
+          "incomplete",
+          "failed"
+        ],
+        "title": "TestStatus",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Viewpoint": {
+        "enum": [
+          "Beginner",
+          "Regular user",
+          "Advanced user"
+        ],
+        "title": "Viewpoint",
+        "type": "string"
+      },
+      "WorkflowStage": {
+        "enum": [
+          "upload",
+          "configuration",
+          "questions",
+          "evaluation",
+          "report"
+        ],
+        "title": "WorkflowStage",
+        "type": "string"
+      },
+      "WorkspaceError": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/WorkflowStage"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "message",
+          "stage"
+        ],
+        "title": "WorkspaceError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Private API for the UVTS document-testing workspace.",
+    "title": "UVTS API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "post": {
+        "operationId": "bootstrap_session_api_v1_session_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bootstrap Session",
+        "tags": [
+          "session"
+        ]
+      }
+    },
+    "/api/v1/tests": {
+      "post": {
+        "operationId": "create_test_api_v1_tests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Test",
+        "tags": [
+          "tests"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}": {
+      "get": {
+        "operationId": "get_test_api_v1_tests__test_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Test",
+        "tags": [
+          "tests"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/events": {
+      "get": {
+        "operationId": "test_events_api_v1_tests__test_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Persisted test-state events. Redis only signals clients to refetch."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Events",
+        "tags": [
+          "tests"
+        ]
+      }
+    }
+  }
+}

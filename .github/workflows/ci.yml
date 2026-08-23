@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: uvts
+          POSTGRES_USER: uvts
+          POSTGRES_PASSWORD: uvts
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U uvts -d uvts"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://uvts:uvts@localhost:5432/uvts
+      REDIS_URL: redis://localhost:6379/0
+      SESSION_SECRET: ci-session-secret-with-at-least-32-characters
+      SESSION_COOKIE_SECURE: "false"
+      ALLOWED_ORIGINS: '["http://localhost:5173"]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Docker Compose
+        run: docker compose --env-file .env.example -f infra/compose.yaml config --quiet
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: uv sync --locked --all-groups
+      - name: Lint
+        working-directory: apps/api
+        run: uv run ruff check .
+      - name: Type check
+        working-directory: apps/api
+        run: uv run mypy src tests
+      - name: Run migrations
+        working-directory: apps/api
+        run: uv run alembic upgrade head
+      - name: Test
+        working-directory: apps/api
+        run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        working-directory: apps/web
+        run: pnpm lint
+      - name: Type check
+        working-directory: apps/web
+        run: pnpm typecheck
+      - name: Unit tests
+        working-directory: apps/web
+        run: pnpm test -- --run
+      - name: Build
+        working-directory: apps/web
+        run: pnpm build
+      - name: Check generated Astryx theme
+        run: |
+          cd apps/web && pnpm build:theme
+          git diff --exit-code -- apps/web/src/app/theme/generated
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Browser tests
+        working-directory: apps/web
+        run: pnpm test:e2e
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: |
+          cd apps/api && uv sync --locked --all-groups
+          cd ../web && pnpm install --frozen-lockfile
+      - name: Regenerate contract and browser types
+        run: make contract
+      - name: Check generated files
+        run: git diff --exit-code -- contracts/openapi.json apps/web/src/api/generated

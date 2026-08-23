@@ -1,0 +1,48 @@
+import { getWorkspaceFixture } from './fixtures/workspaces';
+import type { TestWorkspace } from '../shared/model/workspace';
+import { apiClient } from './client';
+import { workspaceStateSchema } from './workspace-schema';
+
+const mocksEnabled = import.meta.env.VITE_ENABLE_MOCKS !== 'false';
+let sessionBootstrap: Promise<void> | undefined;
+
+export function bootstrapSession(): Promise<void> {
+  sessionBootstrap ??= apiClient
+    .POST('/api/v1/session')
+    .then(({ error }) => {
+      if (error) throw new Error('SESSION_BOOTSTRAP_FAILED');
+    })
+    .catch((error: unknown) => {
+      sessionBootstrap = undefined;
+      throw error;
+    });
+  return sessionBootstrap;
+}
+
+export async function getTestWorkspace(testId: string): Promise<TestWorkspace> {
+  if (testId === 'clean' || mocksEnabled) {
+    const fixture = getWorkspaceFixture(testId);
+    if (!fixture) {
+      throw new Error('TEST_NOT_FOUND');
+    }
+    return fixture;
+  }
+
+  await bootstrapSession();
+  const { data, error, response } = await apiClient.GET('/api/v1/tests/{test_id}', {
+    params: { path: { test_id: testId } },
+  });
+
+  if (error || !data) {
+    throw new Error(response.status === 404 ? 'TEST_NOT_FOUND' : 'TEST_LOAD_FAILED');
+  }
+
+  const parsed = workspaceStateSchema.safeParse({
+    ...data,
+    manual: data.manual ?? undefined,
+    report: data.report ?? undefined,
+    error: data.error ?? undefined,
+  });
+  if (!parsed.success) throw new Error('INVALID_TEST_STATE');
+  return parsed.data;
+}
