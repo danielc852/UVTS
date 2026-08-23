@@ -10,17 +10,26 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test('shows the five-stage clean workspace', async ({ page }) => {
+test('shows only the current stage in the clean workspace', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Check a manual' })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(5);
-  await expect(page.getByText('Upload a manual to continue.')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: '1. Upload manual' })).toBeVisible();
 });
 
 test('restores a completed test from its route', async ({ page }) => {
   await page.goto('/tests/report-ready');
   await expect(page.getByText('7 questions are covered out of 9 total questions.')).toBeVisible();
   await expect(page.getByText('Information partly found').first()).toBeVisible();
+});
+
+test('moves back through completed steps and forward to the current step', async ({ page }) => {
+  await page.goto('/tests/report-ready');
+  await page.getByRole('button', { name: 'Back to Evaluate' }).click();
+  await expect(page.getByRole('heading', { name: '4. Evaluation' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '5. Report' })).not.toBeVisible();
+  await page.getByRole('button', { name: 'Continue to Report' }).click();
+  await expect(page.getByRole('heading', { name: '5. Report' })).toBeVisible();
 });
 
 test('reflows without horizontal page scrolling', async ({ page }) => {

@@ -1,6 +1,7 @@
 import { Banner } from '@astryxdesign/core/Banner';
+import { Button } from '@astryxdesign/core/Button';
 import { useQuery } from '@tanstack/react-query';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { getTestWorkspace } from '../../api/workspaces';
@@ -10,8 +11,8 @@ import { EvaluationSection } from '../../features/evaluation/EvaluationSection';
 import { useEvaluationEvents } from '../../features/evaluation/useEvaluationEvents';
 import { ManualSection } from '../../features/manual/ManualSection';
 import { QuestionsSection } from '../../features/questions/QuestionsSection';
-import { StageSection } from '../../shared/ui/StageSection';
 import { WorkflowOverview } from '../../shared/ui/WorkflowOverview';
+import { workflowStages, type TestWorkspace, type WorkflowStage } from '../../shared/model/workspace';
 import { getStageState } from './stage-state';
 
 const ConfigurationSection = lazy(() =>
@@ -22,6 +23,43 @@ const ConfigurationSection = lazy(() =>
 const ReportSection = lazy(() =>
   import('../../features/report/ReportSection').then((module) => ({ default: module.ReportSection })),
 );
+
+const stepLabels: Record<WorkflowStage, string> = {
+  upload: 'Upload',
+  configuration: 'Questions',
+  questions: 'Review',
+  evaluation: 'Evaluate',
+  report: 'Report',
+};
+
+function WorkspaceStep({ workspace, stage }: { workspace: TestWorkspace; stage: WorkflowStage }) {
+  switch (stage) {
+    case 'upload':
+      return <ManualSection manual={workspace.manual} error={workspace.error} state="active" />;
+    case 'configuration':
+      return (
+        <Suspense fallback={<p role="status">Loading question settings…</p>}>
+          <ConfigurationSection state="active" configuration={workspace.configuration} error={workspace.error} />
+        </Suspense>
+      );
+    case 'questions':
+      return <QuestionsSection state="active" questions={workspace.questions} />;
+    case 'evaluation':
+      return (
+        <EvaluationSection
+          state={getStageState(workspace, 'evaluation') === 'working' ? 'working' : 'active'}
+          questions={workspace.questions}
+          evaluation={workspace.evaluation}
+        />
+      );
+    case 'report':
+      return (
+        <Suspense fallback={<p role="status">Loading report…</p>}>
+          <ReportSection state="active" report={workspace.report} />
+        </Suspense>
+      );
+  }
+}
 
 export function WorkspacePage() {
   const { testId } = useParams();
@@ -63,42 +101,55 @@ export function WorkspacePage() {
   }
 
   const workspace = query.data;
-  const configurationState = getStageState(workspace, 'configuration');
-  const questionsState = getStageState(workspace, 'questions');
-  const evaluationState = getStageState(workspace, 'evaluation');
-  const reportState = getStageState(workspace, 'report');
+  return <WorkspaceView workspace={workspace} />;
+}
+
+function WorkspaceView({ workspace }: { workspace: TestWorkspace }) {
+  const [viewedStage, setViewedStage] = useState<WorkflowStage>(workspace.currentStage);
+  const currentIndex = workflowStages.indexOf(workspace.currentStage);
+  const viewedIndex = workflowStages.indexOf(viewedStage);
+
+  useEffect(() => {
+    setViewedStage(workspace.currentStage);
+  }, [workspace.id, workspace.currentStage]);
+
+  const showStage = (stage: WorkflowStage) => {
+    if (workflowStages.indexOf(stage) > currentIndex) return;
+    setViewedStage(stage);
+    requestAnimationFrame(() => document.getElementById(`stage-${workflowStages.indexOf(stage) + 1}-heading`)?.focus());
+  };
 
   return (
     <div className="workspace">
       <header className="workspace-intro">
+        <p className="workspace-eyebrow">Manual coverage test</p>
         <h1>Check a manual</h1>
         <p>Find information that may be missing from a product manual.</p>
-        <WorkflowOverview currentStage={workspace.currentStage} />
+        <WorkflowOverview currentStage={workspace.currentStage} viewedStage={viewedStage} onStageChange={showStage} />
       </header>
-      <ManualSection manual={workspace.manual} error={workspace.error} />
-      {configurationState === 'locked' ? (
-        <StageSection number={2} title="Generate questions" state="locked" lockedText="Upload a manual to continue." />
-      ) : (
-        <Suspense fallback={<p role="status">Loading question settings…</p>}>
-          <ConfigurationSection
-            state={configurationState === 'working' ? 'active' : configurationState}
-            configuration={workspace.configuration}
-            error={workspace.error}
-          />
-        </Suspense>
-      )}
-      <QuestionsSection
-        state={questionsState === 'working' ? 'active' : questionsState}
-        questions={workspace.questions}
-      />
-      <EvaluationSection state={evaluationState} questions={workspace.questions} evaluation={workspace.evaluation} />
-      {reportState === 'active' ? (
-        <Suspense fallback={<p role="status">Loading report…</p>}>
-          <ReportSection state="active" report={workspace.report} />
-        </Suspense>
-      ) : (
-        <StageSection number={5} title="Report" state="locked" lockedText="Complete the evaluation to see the report." />
-      )}
+      <section className="workflow-step" aria-label={`Step ${viewedIndex + 1} of ${workflowStages.length}`}>
+        <WorkspaceStep workspace={workspace} stage={viewedStage} />
+        <nav className="step-navigation" aria-label="Workflow steps">
+          <div>
+            {viewedIndex > 0 ? (
+              <Button
+                label={`Back to ${stepLabels[workflowStages[viewedIndex - 1]]}`}
+                variant="secondary"
+                onClick={() => showStage(workflowStages[viewedIndex - 1])}
+              />
+            ) : null}
+          </div>
+          <div>
+            {viewedIndex < currentIndex ? (
+              <Button
+                label={`Continue to ${stepLabels[workflowStages[viewedIndex + 1]]}`}
+                variant="primary"
+                onClick={() => showStage(workflowStages[viewedIndex + 1])}
+              />
+            ) : null}
+          </div>
+        </nav>
+      </section>
     </div>
   );
 }

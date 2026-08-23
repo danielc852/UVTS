@@ -7,16 +7,17 @@ import { StageSection } from '../../shared/ui/StageSection';
 interface ManualSectionProps {
   manual?: ManualSummary;
   error?: WorkspaceError;
+  state?: 'active' | 'complete';
 }
 
-export function ManualSection({ manual, error }: ManualSectionProps) {
+export function ManualSection({ manual, error, state = manual ? 'complete' : 'active' }: ManualSectionProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   return (
     <StageSection
       number={1}
       title="Upload manual"
-      state={manual ? 'complete' : 'active'}
+      state={state}
       summary={manual ? `${manual.filename} · ${manual.pageCount} pages · Ready` : undefined}
       error={error}
     >

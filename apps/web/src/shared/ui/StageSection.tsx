@@ -28,7 +28,7 @@ export function StageSection({
   const headingId = `stage-${number}-heading`;
 
   return (
-    <Section variant={state === 'locked' ? 'muted' : 'transparent'} dividers={['bottom']} padding={6}>
+    <Section variant={state === 'locked' ? 'muted' : 'section'} padding={8}>
       <section aria-labelledby={headingId} aria-current={state === 'active' || state === 'working' ? 'step' : undefined}>
         <div className="stage-heading-row">
           <h2 id={headingId} tabIndex={-1}>{number}. {title}</h2>

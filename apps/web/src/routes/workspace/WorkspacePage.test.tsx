@@ -1,16 +1,31 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { renderApp } from '../../test/render-app';
 
 describe('WorkspacePage', () => {
-  it('renders a clean five-stage workspace with one main landmark', async () => {
+  it('renders only the current step in a clean workspace', async () => {
     renderApp('/');
 
     expect(await screen.findByRole('heading', { name: 'Check a manual' })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(5);
-    expect(screen.getByText('Upload a manual to continue.')).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: '1. Upload manual' })).toBeInTheDocument();
+    expect(screen.queryByText('Upload a manual to continue.')).not.toBeInTheDocument();
     expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('lets the user go back to completed steps and return to the current step', async () => {
+    const user = userEvent.setup();
+    renderApp('/tests/questions-ready');
+
+    expect(await screen.findByRole('heading', { name: '3. Review questions' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Back to Questions' }));
+    expect(await screen.findByRole('heading', { name: '2. Generate questions' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '3. Review questions' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Continue to Review' }));
+    expect(screen.getByRole('heading', { name: '3. Review questions' })).toBeInTheDocument();
   });
 
   it('restores a completed report route', async () => {
