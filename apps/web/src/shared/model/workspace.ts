@@ -4,6 +4,7 @@ export type WorkflowStage = components['schemas']['WorkflowStage'];
 export type CoverageStatus = components['schemas']['CoverageStatus'];
 export type EvaluationStatus = components['schemas']['EvaluationStatus'];
 export type ManualSummary = components['schemas']['ManualSummary'];
+export type ManualUpload = components['schemas']['ManualUpload'];
 export type Question = components['schemas']['Question'];
 export type EvaluationItem = components['schemas']['EvaluationItem'];
 export type Evidence = components['schemas']['Evidence'];
@@ -31,6 +32,7 @@ export type TestWorkspace = Omit<
   ApiTestResponse,
   | 'configuration'
   | 'manual'
+  | 'manualUpload'
   | 'report'
   | 'error'
   | 'createdAt'
@@ -40,6 +42,7 @@ export type TestWorkspace = Omit<
 > & {
   configuration: TestConfiguration;
   manual?: ManualSummary;
+  manualUpload?: ManualUpload;
   report?: Report;
   error?: WorkspaceError;
 };

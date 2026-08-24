@@ -35,7 +35,16 @@ export const workspaceStateSchema: z.ZodType<TestWorkspace> = z.object({
       pageCount: z.number().int().positive(),
       status: z.enum(['checking', 'ready', 'invalid']),
     })
-    .optional(),
+    .nullish()
+    .transform((value) => value ?? undefined),
+  manualUpload: z
+    .object({
+      id: z.string(),
+      filename: z.string(),
+      status: z.enum(['checking', 'processing']),
+    })
+    .nullish()
+    .transform((value) => value ?? undefined),
   configuration: z.object({
     totalQuestions: z.number().int().min(1).max(15),
     typeCounts: z.object({
@@ -78,12 +87,16 @@ export const workspaceStateSchema: z.ZodType<TestWorkspace> = z.object({
       ),
       followUpQuestions: z.array(z.string()),
     })
-    .optional(),
+    .nullish()
+    .transform((value) => value ?? undefined),
   error: z
     .object({
+      code: z.string().default('workflow_error'),
       title: z.string(),
       message: z.string(),
       stage: z.enum(['upload', 'configuration', 'questions', 'evaluation', 'report']),
+      retryable: z.boolean().default(false),
     })
-    .optional(),
+    .nullish()
+    .transform((value) => value ?? undefined),
 });

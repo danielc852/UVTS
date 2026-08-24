@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from uvts_api.adapters.db.base import Base
@@ -44,3 +44,31 @@ class TestRun(Base):
     )
 
     owner: Mapped[AnonymousSession] = relationship(back_populates="tests")
+    documents: Mapped[list["Document"]] = relationship(
+        back_populates="test_run", cascade="all, delete-orphan"
+    )
+
+
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = (
+        UniqueConstraint("test_run_id", "role", name="uq_documents_test_role"),
+        Index("ix_documents_test_status", "test_run_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    test_run_id: Mapped[str] = mapped_column(
+        ForeignKey("test_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="checking")
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    test_run: Mapped[TestRun] = relationship(back_populates="documents")

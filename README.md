@@ -2,7 +2,7 @@
 
 UVTS helps manual writers check whether a PDF contains the information that different kinds of users need. This repository contains a React browser application and a FastAPI service.
 
-The current milestone is the application foundation. It includes the five-stage workspace, a generated browser/API contract, anonymous browser sessions, durable service infrastructure, and automated checks. PDF extraction and AI evaluation are intentionally not implemented yet.
+The current milestone includes the five-stage workspace, private PDF upload and replacement, background page-by-page text extraction, a continuous-scroll PDF viewer, a generated browser/API contract, anonymous browser sessions, durable service infrastructure, and automated checks. AI evaluation is not implemented yet.
 
 ## Repository map
 
@@ -42,4 +42,4 @@ See [repository architecture](docs/architecture/repository.md) for ownership rul
 
 ## Product boundaries
 
-This foundation does not process uploaded files or call OpenRouter. Those features will be added through the API ports and feature modules already established here. The six grouped topics in `product_spec.md` and `uiux.md` are the canonical first-release taxonomy.
+UVTS accepts unencrypted PDFs with 1–20 pages and document-wide extractable text. Scanned documents remain out of scope because OCR is not included. OpenRouter evaluation is not implemented yet. The six grouped topics in `product_spec.md` and `uiux.md` are the canonical first-release taxonomy.

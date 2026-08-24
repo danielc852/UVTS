@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tests/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Initial Manual */
+        post: operations["upload_initial_manual_api_v1_tests_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tests/{test_id}": {
         parameters: {
             query?: never;
@@ -106,10 +123,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tests/{test_id}/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Manual */
+        put: operations["replace_manual_api_v1_tests__test_id__manual_put"];
+        post?: never;
+        /** Delete Manual */
+        delete: operations["delete_manual_api_v1_tests__test_id__manual_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tests/{test_id}/manual/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Manual Content */
+        get: operations["manual_content_api_v1_tests__test_id__manual_content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_replace_manual_api_v1_tests__test_id__manual_put */
+        Body_replace_manual_api_v1_tests__test_id__manual_put: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_initial_manual_api_v1_tests_manual_post */
+        Body_upload_initial_manual_api_v1_tests_manual_post: {
+            /** File */
+            file: string;
+        };
         /** CoverageCounts */
         CoverageCounts: {
             /** Failed */
@@ -221,6 +283,19 @@ export interface components {
             pageCount: number;
             status: components["schemas"]["ManualStatus"];
         };
+        /** ManualUpload */
+        ManualUpload: {
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            status: components["schemas"]["ManualUploadStatus"];
+        };
+        /**
+         * ManualUploadStatus
+         * @enum {string}
+         */
+        ManualUploadStatus: "checking" | "processing";
         /** Question */
         Question: {
             /** Id */
@@ -343,6 +418,7 @@ export interface components {
             /** Evaluation */
             evaluation?: components["schemas"]["EvaluationItem"][];
             manual?: components["schemas"]["ManualSummary"] | null;
+            manualUpload?: components["schemas"]["ManualUpload"] | null;
             /** Questions */
             questions?: components["schemas"]["Question"][];
             report?: components["schemas"]["Report"] | null;
@@ -362,6 +438,7 @@ export interface components {
             /** Id */
             id: string;
             manual?: components["schemas"]["ManualSummary"] | null;
+            manualUpload?: components["schemas"]["ManualUpload"] | null;
             /** Questions */
             questions: components["schemas"]["Question"][];
             report?: components["schemas"]["Report"] | null;
@@ -404,8 +481,18 @@ export interface components {
         WorkflowStage: "upload" | "configuration" | "questions" | "evaluation" | "report";
         /** WorkspaceError */
         WorkspaceError: {
+            /**
+             * Code
+             * @default workflow_error
+             */
+            code: string;
             /** Message */
             message: string;
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
             stage: components["schemas"]["WorkflowStage"];
             /** Title */
             title: string;
@@ -530,6 +617,48 @@ export interface operations {
             };
         };
     };
+    upload_initial_manual_api_v1_tests_manual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_initial_manual_api_v1_tests_manual_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_test_api_v1_tests__test_id__get: {
         parameters: {
             query?: never;
@@ -598,6 +727,164 @@ export interface operations {
                 content: {
                     "text/event-stream": unknown;
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_manual_api_v1_tests__test_id__manual_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_replace_manual_api_v1_tests__test_id__manual_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_manual_api_v1_tests__test_id__manual_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manual_content_api_v1_tests__test_id__manual_content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

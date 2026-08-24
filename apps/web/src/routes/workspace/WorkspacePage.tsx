@@ -2,13 +2,13 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 
 import { getTestWorkspace } from '../../api/workspaces';
 import { getWorkspaceFixture } from '../../api/fixtures/workspaces';
 import { queryKeys } from '../../api/query-keys';
 import { EvaluationSection } from '../../features/evaluation/EvaluationSection';
-import { useEvaluationEvents } from '../../features/evaluation/useEvaluationEvents';
+import { useTestEvents } from '../../features/evaluation/useEvaluationEvents';
 import { ManualSection } from '../../features/manual/ManualSection';
 import { QuestionsSection } from '../../features/questions/QuestionsSection';
 import { WorkflowOverview } from '../../shared/ui/WorkflowOverview';
@@ -35,7 +35,7 @@ const stepLabels: Record<WorkflowStage, string> = {
 function WorkspaceStep({ workspace, stage }: { workspace: TestWorkspace; stage: WorkflowStage }) {
   switch (stage) {
     case 'upload':
-      return <ManualSection manual={workspace.manual} error={workspace.error} state="active" />;
+      return <ManualSection workspace={workspace} state="active" />;
     case 'configuration':
       return (
         <Suspense fallback={<p role="status">Loading question settings…</p>}>
@@ -63,6 +63,7 @@ function WorkspaceStep({ workspace, stage }: { workspace: TestWorkspace; stage: 
 
 export function WorkspacePage() {
   const { testId } = useParams();
+  const location = useLocation();
   const queryId = testId ?? 'clean';
   const query = useQuery({
     queryKey: queryKeys.test(queryId),
@@ -77,9 +78,12 @@ export function WorkspacePage() {
     retry: false,
   });
 
-  useEvaluationEvents(
+  const usesLiveApi = !testId || !getWorkspaceFixture(testId);
+  useTestEvents(
     testId ?? '',
-    Boolean(testId) && query.data?.currentStage === 'evaluation' && import.meta.env.VITE_ENABLE_MOCKS === 'false',
+    Boolean(testId) &&
+      usesLiveApi &&
+      (Boolean(query.data?.manualUpload) || query.data?.currentStage === 'evaluation'),
   );
 
   if (query.isPending) {
@@ -101,17 +105,29 @@ export function WorkspacePage() {
   }
 
   const workspace = query.data;
-  return <WorkspaceView workspace={workspace} />;
+  const routeState = location.state as { showUpload?: boolean } | null;
+  return (
+    <WorkspaceView
+      workspace={workspace}
+      initialStage={routeState?.showUpload ? 'upload' : workspace.currentStage}
+    />
+  );
 }
 
-function WorkspaceView({ workspace }: { workspace: TestWorkspace }) {
-  const [viewedStage, setViewedStage] = useState<WorkflowStage>(workspace.currentStage);
+function WorkspaceView({
+  workspace,
+  initialStage,
+}: {
+  workspace: TestWorkspace;
+  initialStage: WorkflowStage;
+}) {
+  const [viewedStage, setViewedStage] = useState<WorkflowStage>(initialStage);
   const currentIndex = workflowStages.indexOf(workspace.currentStage);
   const viewedIndex = workflowStages.indexOf(viewedStage);
 
   useEffect(() => {
-    setViewedStage(workspace.currentStage);
-  }, [workspace.id, workspace.currentStage]);
+    setViewedStage(initialStage);
+  }, [initialStage, workspace.id]);
 
   const showStage = (stage: WorkflowStage) => {
     if (workflowStages.indexOf(stage) > currentIndex) return;

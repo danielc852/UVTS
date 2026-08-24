@@ -40,6 +40,12 @@ class Settings(BaseSettings):
         default=Path(".data/documents"),
         validation_alias=AliasChoices("PRIVATE_STORAGE_PATH", "UVTS_STORAGE_ROOT"),
     )
+    document_processing_eager: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "DOCUMENT_PROCESSING_EAGER", "UVTS_DOCUMENT_PROCESSING_EAGER"
+        ),
+    )
     openrouter_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENROUTER_API_KEY", "UVTS_OPENROUTER_API_KEY"),

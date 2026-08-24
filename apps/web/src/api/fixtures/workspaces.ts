@@ -125,9 +125,11 @@ export const workspaceFixtures = {
     ...baseWorkspace,
     id: 'upload-error',
     error: {
+      code: 'manual_no_readable_text',
       stage: 'upload',
       title: 'The manual was not added',
       message: 'UVTS could not read the text in this PDF. Scanned documents are not supported yet.',
+      retryable: false,
     },
   },
   'generation-error': {
@@ -136,9 +138,11 @@ export const workspaceFixtures = {
     currentStage: 'configuration',
     manual,
     error: {
+      code: 'generation_failed',
       stage: 'configuration',
       title: 'Questions were not created',
       message: 'Your manual and settings are still here. Try generating the questions again.',
+      retryable: true,
     },
   },
   'incomplete-report': {

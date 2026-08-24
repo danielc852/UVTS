@@ -32,3 +32,7 @@ def session_required() -> AppError:
 def test_not_found() -> AppError:
     # The same response is used for absent and unowned IDs to avoid disclosing private tests.
     return AppError(status_code=404, code="test_not_found", message="This test was not found.")
+
+
+def manual_not_found() -> AppError:
+    return AppError(status_code=404, code="manual_not_found", message="This manual was not found.")

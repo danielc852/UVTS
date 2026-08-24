@@ -22,10 +22,7 @@ export function bootstrapSession(): Promise<void> {
 export async function getTestWorkspace(testId: string): Promise<TestWorkspace> {
   if (testId === 'clean' || mocksEnabled) {
     const fixture = getWorkspaceFixture(testId);
-    if (!fixture) {
-      throw new Error('TEST_NOT_FOUND');
-    }
-    return fixture;
+    if (fixture) return fixture;
   }
 
   await bootstrapSession();
@@ -37,12 +34,11 @@ export async function getTestWorkspace(testId: string): Promise<TestWorkspace> {
     throw new Error(response.status === 404 ? 'TEST_NOT_FOUND' : 'TEST_LOAD_FAILED');
   }
 
-  const parsed = workspaceStateSchema.safeParse({
-    ...data,
-    manual: data.manual ?? undefined,
-    report: data.report ?? undefined,
-    error: data.error ?? undefined,
-  });
+  return parseTestWorkspace(data);
+}
+
+export function parseTestWorkspace(value: unknown): TestWorkspace {
+  const parsed = workspaceStateSchema.safeParse(value);
   if (!parsed.success) throw new Error('INVALID_TEST_STATE');
   return parsed.data;
 }

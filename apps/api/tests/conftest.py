@@ -18,6 +18,10 @@ class FakeRedis:
             raise ConnectionError("redis unavailable")
         return True
 
+    async def publish(self, channel: str, message: str) -> int:
+        del channel, message
+        return 0
+
     async def aclose(self) -> None:
         return None
 
@@ -29,10 +33,11 @@ async def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[
     settings = Settings(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
         redis_url="redis://unused/0",
+        document_processing_eager=True,
         auto_create_schema=True,
         session_cookie_secure=False,
         sse_heartbeat_seconds=0.01,
-    )
+    ).model_copy(update={"storage_root": tmp_path / "documents"})
     application = create_app(settings)
     async with application.router.lifespan_context(application):
         yield application

@@ -10,6 +10,7 @@ from uvts_api.adapters.db.models import AnonymousSession
 from uvts_api.core.config import Settings
 from uvts_api.core.errors import session_required
 from uvts_api.core.security import hash_session_token
+from uvts_api.ports.storage import DocumentStorage
 
 
 def get_runtime_settings(request: Request) -> Settings:
@@ -23,6 +24,13 @@ async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 RuntimeSettings = Annotated[Settings, Depends(get_runtime_settings)]
+
+
+def get_document_storage(request: Request) -> DocumentStorage:
+    return cast(DocumentStorage, request.app.state.document_storage)
+
+
+DocumentStorageDependency = Annotated[DocumentStorage, Depends(get_document_storage)]
 
 
 async def get_current_session(

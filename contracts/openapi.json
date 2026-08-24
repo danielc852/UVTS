@@ -1,6 +1,34 @@
 {
   "components": {
     "schemas": {
+      "Body_replace_manual_api_v1_tests__test_id__manual_put": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_replace_manual_api_v1_tests__test_id__manual_put",
+        "type": "object"
+      },
+      "Body_upload_initial_manual_api_v1_tests_manual_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_initial_manual_api_v1_tests_manual_post",
+        "type": "object"
+      },
       "CoverageCounts": {
         "additionalProperties": false,
         "properties": {
@@ -284,6 +312,37 @@
         ],
         "title": "ManualSummary",
         "type": "object"
+      },
+      "ManualUpload": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ManualUploadStatus"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "status"
+        ],
+        "title": "ManualUpload",
+        "type": "object"
+      },
+      "ManualUploadStatus": {
+        "enum": [
+          "checking",
+          "processing"
+        ],
+        "title": "ManualUploadStatus",
+        "type": "string"
       },
       "Question": {
         "additionalProperties": false,
@@ -611,6 +670,16 @@
               }
             ]
           },
+          "manualUpload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualUpload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "questions": {
             "items": {
               "$ref": "#/components/schemas/Question"
@@ -671,6 +740,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ManualSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manualUpload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualUpload"
               },
               {
                 "type": "null"
@@ -798,9 +877,19 @@
       "WorkspaceError": {
         "additionalProperties": false,
         "properties": {
+          "code": {
+            "default": "workflow_error",
+            "title": "Code",
+            "type": "string"
+          },
           "message": {
             "title": "Message",
             "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
           },
           "stage": {
             "$ref": "#/components/schemas/WorkflowStage"
@@ -951,6 +1040,57 @@
         ]
       }
     },
+    "/api/v1/tests/manual": {
+      "post": {
+        "operationId": "upload_initial_manual_api_v1_tests_manual_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_initial_manual_api_v1_tests_manual_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Upload Initial Manual",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/tests/{test_id}": {
       "get": {
         "operationId": "get_test_api_v1_tests__test_id__get",
@@ -1068,6 +1208,203 @@
         "summary": "Test Events",
         "tags": [
           "tests"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/manual": {
+      "delete": {
+        "operationId": "delete_manual_api_v1_tests__test_id__manual_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Manual",
+        "tags": [
+          "documents"
+        ]
+      },
+      "put": {
+        "operationId": "replace_manual_api_v1_tests__test_id__manual_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_replace_manual_api_v1_tests__test_id__manual_put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Replace Manual",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/manual/content": {
+      "get": {
+        "operationId": "manual_content_api_v1_tests__test_id__manual_content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manual Content",
+        "tags": [
+          "documents"
         ]
       }
     }

@@ -35,6 +35,11 @@ class ManualStatus(StrEnum):
     INVALID = "invalid"
 
 
+class ManualUploadStatus(StrEnum):
+    CHECKING = "checking"
+    PROCESSING = "processing"
+
+
 class QuestionType(StrEnum):
     BASIC = "Basic"
     CROSS_PARAGRAPH = "Cross-paragraph"
@@ -63,6 +68,12 @@ class ManualSummary(ApiModel):
     filename: str
     page_count: int = Field(alias="pageCount", ge=1, le=20)
     status: ManualStatus
+
+
+class ManualUpload(ApiModel):
+    id: str
+    filename: str
+    status: ManualUploadStatus
 
 
 class QuestionTypeCounts(ApiModel):
@@ -158,14 +169,17 @@ class Report(ApiModel):
 
 
 class WorkspaceError(ApiModel):
+    code: str = "workflow_error"
     title: str
     message: str
     stage: WorkflowStage
+    retryable: bool = False
 
 
 class WorkspaceState(ApiModel):
     current_stage: WorkflowStage = Field(alias="currentStage")
     manual: ManualSummary | None = None
+    manual_upload: ManualUpload | None = Field(default=None, alias="manualUpload")
     configuration: TestConfiguration
     questions: list[Question]
     evaluation: list[EvaluationItem]

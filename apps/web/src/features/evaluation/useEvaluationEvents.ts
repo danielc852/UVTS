@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { apiUrl } from '../../api/client';
 import { queryKeys } from '../../api/query-keys';
 
-export function useEvaluationEvents(testId: string, enabled: boolean) {
+export function useTestEvents(testId: string, enabled: boolean) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -16,9 +16,6 @@ export function useEvaluationEvents(testId: string, enabled: boolean) {
     const refetch = () => void queryClient.invalidateQueries({ queryKey: queryKeys.test(testId) });
 
     eventSource.addEventListener('test.updated', refetch);
-    eventSource.addEventListener('evaluation.progress', refetch);
-    eventSource.addEventListener('evaluation.completed', refetch);
-    eventSource.addEventListener('evaluation.failed', refetch);
     eventSource.onmessage = refetch;
 
     return () => eventSource.close();
