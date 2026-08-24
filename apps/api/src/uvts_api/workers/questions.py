@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 from uvts_api.adapters.db.models import TestRun
 from uvts_api.adapters.db.session import create_engine, create_session_factory
 from uvts_api.adapters.notifications.redis import RedisStateNotifications
+from uvts_api.adapters.storage.local import LocalDocumentStorage
 from uvts_api.core.config import Settings, get_settings
 from uvts_api.services.questions import (
     build_question_agent,
@@ -44,6 +45,7 @@ async def _generate_questions(test_id: str, operation_id: str) -> None:
                 return
             await process_question_generation(
                 db=db,
+                storage=LocalDocumentStorage(settings.storage_root),
                 notifications=notifications,
                 agent=agent,
                 test_id=test_id,

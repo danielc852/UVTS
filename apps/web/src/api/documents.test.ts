@@ -52,13 +52,14 @@ describe('document requests', () => {
 
     const result = await uploadManual({
       file: new File(['%PDF-test'], 'manual.pdf', { type: 'application/pdf' }),
+      testId: 'test-1',
       onProgress: progress,
     });
 
     expect(result).toEqual(workspace);
     expect(progress).toHaveBeenCalledWith(50);
-    expect(TestXMLHttpRequest.latest?.method).toBe('POST');
-    expect(TestXMLHttpRequest.latest?.url).toMatch(/\/api\/v1\/tests\/manual$/);
+    expect(TestXMLHttpRequest.latest?.method).toBe('PUT');
+    expect(TestXMLHttpRequest.latest?.url).toMatch(/\/api\/v1\/tests\/test-1\/manual$/);
     expect(TestXMLHttpRequest.latest?.withCredentials).toBe(true);
     vi.unstubAllGlobals();
   });

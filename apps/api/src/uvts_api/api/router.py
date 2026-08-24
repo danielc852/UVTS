@@ -4,6 +4,7 @@ from uvts_api.api.routes import (
     documents,
     evaluations,
     health,
+    question_configuration,
     questions,
     reports,
     sessions,
@@ -18,3 +19,4 @@ api_router.include_router(documents.router)
 api_router.include_router(questions.router)
 api_router.include_router(evaluations.router)
 api_router.include_router(reports.router)
+api_router.include_router(question_configuration.router)

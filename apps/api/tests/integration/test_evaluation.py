@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
@@ -10,6 +11,7 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 from sqlalchemy import select
 
+import uvts_api.api.routes.evaluations as evaluations
 from uvts_api.adapters.db.models import (
     AnonymousSession,
     Document,
@@ -18,10 +20,17 @@ from uvts_api.adapters.db.models import (
 from uvts_api.adapters.db.models import TestRun as RunModel
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOutput
-from uvts_api.api.routes import evaluations
 from uvts_api.domain.enums import TestStatus as RunStatus
-from uvts_api.schemas.tests import TestCreateRequest as CreateRequest
-from uvts_api.schemas.workspace import ManualStatus, ManualSummary, Question, WorkflowStage
+from uvts_api.schemas.workspace import (
+    ManualStatus,
+    ManualSummary,
+    Question,
+    QuestionSet,
+    QuestionSetSource,
+    QuestionSetStatus,
+    WorkflowStage,
+    WorkspaceState,
+)
 from uvts_api.services.evaluation import process_evaluation_operation, start_evaluation
 
 
@@ -63,9 +72,6 @@ def make_question(question_id: str) -> Question:
     return Question(
         id=question_id,
         text=f"What information is available for {question_id}?",
-        type="Basic",
-        topic="Setup and requirements",
-        viewpoint="Beginner",
     )
 
 
@@ -91,14 +97,24 @@ async def seed_ready_test(
             page_count=1,
             status=ManualStatus.READY,
         )
-        state = CreateRequest(
-            current_stage=WorkflowStage.QUESTIONS,
-            manual=manual,
-            questions=questions,
+        state = WorkspaceState.model_validate(
+            {
+                "schemaVersion": 2,
+                "currentStage": WorkflowStage.EVALUATION,
+                "manual": manual,
+                "questionSet": QuestionSet(
+                    id="question-set-1",
+                    status=QuestionSetStatus.CONFIRMED,
+                    source=QuestionSetSource.LEGACY_MANUAL,
+                    configuration_version=None,
+                    confirmed_at=datetime.now(UTC),
+                    items=questions,
+                ),
+            }
         )
         test = RunModel(
             owner_session_id=owner.id,
-            status=RunStatus.QUESTIONS_READY.value,
+            status=RunStatus.READY.value,
             state=state.model_dump(mode="json", by_alias=True),
         )
         db.add(test)
@@ -347,6 +363,7 @@ async def test_stale_operation_cannot_write_a_model_result(
         fake.before_invoke = replace_operation
         await process_evaluation_operation(
             db=db,
+            storage=app.state.document_storage,
             agent=EvaluatorAgent(cast(BaseChatModel, fake)),
             notifications=app.state.notifications,
             test_id=test_id,

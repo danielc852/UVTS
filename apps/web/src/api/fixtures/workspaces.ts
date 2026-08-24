@@ -1,6 +1,7 @@
 import {
   defaultConfiguration,
   type Question,
+  type QuestionSet,
   type Report,
   type TestWorkspace,
 } from '../../shared/model/workspace';
@@ -12,36 +13,45 @@ const manual = {
   status: 'ready' as const,
 };
 
-const questions: Question[] = [
-  {
-    id: 'q1',
-    text: 'How do I complete the initial setup?',
-    type: 'Basic',
-    topic: 'Setup and requirements',
-    viewpoint: 'Beginner',
+const productConfiguration = {
+  version: 1,
+  totalQuestions: 9,
+  productDescription: 'A compact smart speaker for home music and voice controls.',
+  productImage: {
+    id: 'product-image-1',
+    filename: 'smart-speaker.png',
+    contentType: 'image/png',
+    sizeBytes: 2048,
   },
-  {
-    id: 'q2',
-    text: 'Can I change the export format after automatic backup is enabled?',
-    type: 'Cross-paragraph',
-    topic: 'Settings and customization',
-    viewpoint: 'Regular user',
-  },
-  {
-    id: 'q3',
-    text: 'What should I do if setup stops before my device appears?',
-    type: 'Edge-case',
-    topic: 'Troubleshooting and recovery',
-    viewpoint: 'Advanced user',
-  },
-];
+};
 
-const repeatedQuestions = Array.from({ length: 9 }, (_, index) => {
-  const source = questions[index % questions.length];
-  return { ...source, id: `q${index + 1}`, text: `${source.text} (${index + 1})` };
-});
+const seeds = [
+  'How do I complete the initial setup?',
+  'Can I change the export format after automatic backup is enabled?',
+  'What should I do if setup stops before my device appears?',
+];
+const repeatedQuestions: Question[] = Array.from({ length: 9 }, (_, index) => ({
+  id: `q${index + 1}`,
+  text: `${seeds[index % seeds.length]} (${index + 1})`,
+}));
+
+const draftQuestionSet: QuestionSet = {
+  id: 'question-set-1',
+  status: 'draft',
+  source: 'product_context_v1',
+  configurationVersion: 1,
+  generatedAt: '2026-08-24T00:00:00Z',
+  items: repeatedQuestions,
+};
+const confirmedQuestionSet: QuestionSet = {
+  ...draftQuestionSet,
+  status: 'confirmed',
+  confirmedAt: '2026-08-24T00:01:00Z',
+};
+const source = { questionSetId: confirmedQuestionSet.id, manualId: manual.id };
 
 const completeReport: Report = {
+  source,
   isComplete: true,
   counts: { found: 7, partly_found: 1, not_found: 1, failed: 0 },
   results: repeatedQuestions.map((question, index) => ({
@@ -80,7 +90,9 @@ const completeReport: Report = {
 
 const baseWorkspace: TestWorkspace = {
   id: 'clean',
-  currentStage: 'upload',
+  schemaVersion: 2,
+  status: 'draft',
+  currentStage: 'configuration',
   configuration: defaultConfiguration,
   questions: [],
   evaluation: [],
@@ -91,22 +103,76 @@ export const workspaceFixtures = {
   'manual-ready': {
     ...baseWorkspace,
     id: 'manual-ready',
-    currentStage: 'configuration',
+    status: 'ready',
+    currentStage: 'evaluation',
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
+    questions: repeatedQuestions,
     manual,
+  },
+  'configuration-saved': {
+    ...baseWorkspace,
+    id: 'configuration-saved',
+    configuration: productConfiguration,
+  },
+  'configuration-generating': {
+    ...baseWorkspace,
+    id: 'configuration-generating',
+    status: 'generating',
+    configuration: productConfiguration,
   },
   'questions-ready': {
     ...baseWorkspace,
     id: 'questions-ready',
+    status: 'questions_ready',
     currentStage: 'questions',
+    configuration: productConfiguration,
+    questionSet: draftQuestionSet,
+    questions: repeatedQuestions,
+  },
+  'questions-generating': {
+    ...baseWorkspace,
+    id: 'questions-generating',
+    status: 'generating',
+    currentStage: 'questions',
+    configuration: productConfiguration,
+    questionSet: draftQuestionSet,
+    questions: repeatedQuestions,
+  },
+  'legacy-questions': {
+    ...baseWorkspace,
+    id: 'legacy-questions',
+    status: 'questions_ready',
+    currentStage: 'questions',
+    configuration: productConfiguration,
+    questionSet: {
+      ...draftQuestionSet,
+      id: 'legacy-question-set',
+      source: 'legacy_manual_unknown',
+      configurationVersion: null,
+    },
+    questions: repeatedQuestions,
     manual,
+  },
+  'upload-ready': {
+    ...baseWorkspace,
+    id: 'upload-ready',
+    status: 'questions_confirmed',
+    currentStage: 'upload',
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
     questions: repeatedQuestions,
   },
   evaluating: {
     ...baseWorkspace,
     id: 'evaluating',
+    status: 'evaluating',
     currentStage: 'evaluation',
-    manual,
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
     questions: repeatedQuestions,
+    manual,
+    evaluationSource: source,
     evaluation: repeatedQuestions.map((question, index) => ({
       questionId: question.id,
       status: index < 4 ? 'complete' : index === 4 ? 'checking' : 'waiting',
@@ -115,15 +181,24 @@ export const workspaceFixtures = {
   'report-ready': {
     ...baseWorkspace,
     id: 'report-ready',
+    status: 'complete',
     currentStage: 'report',
-    manual,
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
     questions: repeatedQuestions,
+    manual,
+    evaluationSource: source,
     evaluation: repeatedQuestions.map((question) => ({ questionId: question.id, status: 'complete' })),
     report: completeReport,
   },
   'upload-error': {
     ...baseWorkspace,
     id: 'upload-error',
+    status: 'questions_confirmed',
+    currentStage: 'upload',
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
+    questions: repeatedQuestions,
     error: {
       code: 'manual_no_readable_text',
       stage: 'upload',
@@ -135,22 +210,26 @@ export const workspaceFixtures = {
   'generation-error': {
     ...baseWorkspace,
     id: 'generation-error',
-    currentStage: 'configuration',
-    manual,
+    status: 'failed',
+    configuration: productConfiguration,
     error: {
-      code: 'generation_failed',
+      code: 'question_generation_failed',
       stage: 'configuration',
       title: 'Questions were not created',
-      message: 'Your manual and settings are still here. Try generating the questions again.',
+      message: 'Your Product setup is saved. Try generating the questions again.',
       retryable: true,
     },
   },
   'incomplete-report': {
     ...baseWorkspace,
     id: 'incomplete-report',
+    status: 'incomplete',
     currentStage: 'report',
-    manual,
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
     questions: repeatedQuestions,
+    manual,
+    evaluationSource: source,
     evaluation: repeatedQuestions.map((question, index) => ({
       questionId: question.id,
       status: index === 8 ? 'failed' : 'complete',

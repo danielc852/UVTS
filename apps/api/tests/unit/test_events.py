@@ -82,5 +82,5 @@ async def test_sse_refetches_persisted_state_after_notification(app: FastAPI) ->
     first = await anext(events)
     second = await anext(events)
 
-    assert "id: 1" in first and '"currentStage":"upload"' in first
+    assert "id: 1" in first and '"currentStage":"configuration"' in first
     assert "id: 2" in second and '"currentStage":"evaluation"' in second

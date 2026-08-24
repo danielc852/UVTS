@@ -28,7 +28,8 @@ async def test_test_reads_are_scoped_to_owning_session(app: FastAPI) -> None:
         await owner.post("/api/v1/session")
         created = await owner.post(
             "/api/v1/tests",
-            json={"currentStage": "configuration", "questions": [], "evaluation": []},
+            data={"productDescription": "A product", "totalQuestions": "3"},
+            files={"productImage": ("product.png", b"image", "image/png")},
         )
         test_id = created.json()["id"]
         await stranger.post("/api/v1/session")
@@ -39,7 +40,7 @@ async def test_test_reads_are_scoped_to_owning_session(app: FastAPI) -> None:
 
     assert owned.status_code == 200
     assert owned.json()["currentStage"] == "configuration"
-    assert owned.json()["configuration"]["totalQuestions"] == 9
+    assert owned.json()["configuration"]["totalQuestions"] == 3
     assert hidden.status_code == absent.status_code == 404
     assert hidden.json()["error"]["code"] == absent.json()["error"]["code"] == "test_not_found"
 
@@ -47,7 +48,11 @@ async def test_test_reads_are_scoped_to_owning_session(app: FastAPI) -> None:
 async def test_missing_session_and_invalid_body_use_error_envelope(client: AsyncClient) -> None:
     missing = await client.get("/api/v1/tests/anything", headers={"X-Request-ID": "req-7"})
     await client.post("/api/v1/session")
-    invalid = await client.post("/api/v1/tests", json={"currentStage": "unknown"})
+    invalid = await client.post(
+        "/api/v1/tests",
+        data={"productDescription": "A product", "totalQuestions": "16"},
+        files={"productImage": ("product.png", b"image", "image/png")},
+    )
 
     assert missing.status_code == 401
     assert missing.json()["request_id"] == "req-7"

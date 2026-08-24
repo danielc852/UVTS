@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pypdf import PdfReader
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from uvts_api.adapters.db.models import Document, TestRun
+from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.storage import DocumentStorage
@@ -91,6 +91,22 @@ async def publish_change(notifications: StateNotifications, test_id: str) -> Non
         logger.warning("Document state notification failed", exc_info=True)
 
 
+async def delete_storage_after_commit(storage: DocumentStorage, storage_key: str) -> None:
+    """Best-effort cleanup that never invalidates an already committed transition."""
+
+    for attempt in range(2):
+        try:
+            await storage.delete(storage_key)
+            return
+        except Exception:
+            if attempt == 1:
+                logger.warning(
+                    "Committed document cleanup failed",
+                    extra={"storage_key": storage_key},
+                    exc_info=True,
+                )
+
+
 def update_state(test: TestRun, state: WorkspaceState) -> None:
     test.state = state.model_dump(mode="json", by_alias=True)
     test.state_version += 1
@@ -103,11 +119,28 @@ async def process_pending_document(
     notifications: StateNotifications,
     document_id: str,
 ) -> None:
-    document = await db.scalar(select(Document).where(Document.id == document_id))
-    if document is None or document.role != "pending":
+    candidate = await db.scalar(select(Document).where(Document.id == document_id))
+    if candidate is None or candidate.role != "pending":
         return
-    test = await db.get(TestRun, document.test_run_id)
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == candidate.test_run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if test is None:
+        return
+    document = await db.scalar(
+        select(Document)
+        .where(
+            Document.id == document_id,
+            Document.test_run_id == test.id,
+            Document.role == "pending",
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if document is None:
         return
 
     document.status = ManualUploadStatus.PROCESSING.value
@@ -125,9 +158,6 @@ async def process_pending_document(
             }
         ),
     )
-    test.status = TestStatus.DRAFT.value
-    test.active_operation_id = None
-    test.agent_settings = {}
     await db.commit()
     await publish_change(notifications, test.id)
 
@@ -157,8 +187,61 @@ async def process_pending_document(
         )
         return
 
-    await db.refresh(document)
-    await db.refresh(test)
+    try:
+        promoted = await promote_pending_document(
+            db=db,
+            document_id=document_id,
+            processed=processed,
+        )
+    except Exception:
+        await db.rollback()
+        await fail_pending_document(
+            db=db,
+            storage=storage,
+            notifications=notifications,
+            document_id=document_id,
+            error=ManualValidationError(
+                code="manual_processing_failed",
+                message="UVTS could not finish adding this PDF. Try uploading it again.",
+                retryable=True,
+            ),
+        )
+        return
+    if promoted is None:
+        return
+    test_id, old_storage_key = promoted
+    await publish_change(notifications, test_id)
+    if old_storage_key is not None:
+        await delete_storage_after_commit(storage, old_storage_key)
+
+
+async def promote_pending_document(
+    *,
+    db: AsyncSession,
+    document_id: str,
+    processed: ProcessedPdf,
+) -> tuple[str, str | None] | None:
+    """Atomically replace the active manual only after the candidate is valid."""
+
+    candidate = await db.scalar(select(Document).where(Document.id == document_id))
+    if candidate is None:
+        return None
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == candidate.test_run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if test is None:
+        return None
+    document = await db.scalar(
+        select(Document)
+        .where(Document.id == document_id, Document.test_run_id == test.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if document is None or document.role != "pending":
+        return None
     active = await db.scalar(
         select(Document).where(
             Document.test_run_id == test.id,
@@ -170,6 +253,12 @@ async def process_pending_document(
         await db.delete(active)
         await db.flush()
 
+    await db.execute(
+        delete(QuestionEvaluationRecord).where(
+            QuestionEvaluationRecord.test_run_id == test.id
+        )
+    )
+
     document.role = "active"
     document.status = ManualStatus.READY.value
     document.page_count = processed.page_count
@@ -179,7 +268,7 @@ async def process_pending_document(
         test,
         state.model_copy(
             update={
-                "current_stage": WorkflowStage.CONFIGURATION,
+                "current_stage": WorkflowStage.EVALUATION,
                 "manual": ManualSummary(
                     id=document.id,
                     filename=document.filename,
@@ -187,17 +276,19 @@ async def process_pending_document(
                     status=ManualStatus.READY,
                 ),
                 "manual_upload": None,
-                "questions": [],
+                "evaluation_source": None,
                 "evaluation": [],
                 "report": None,
                 "error": None,
             }
         ),
     )
+    test.status = TestStatus.READY.value
+    settings = dict(test.agent_settings)
+    settings.pop("evaluator", None)
+    test.agent_settings = settings
     await db.commit()
-    await publish_change(notifications, test.id)
-    if old_storage_key is not None:
-        await storage.delete(old_storage_key)
+    return test.id, old_storage_key
 
 
 async def fail_pending_document(
@@ -208,11 +299,24 @@ async def fail_pending_document(
     document_id: str,
     error: ManualValidationError,
 ) -> None:
-    document = await db.scalar(select(Document).where(Document.id == document_id))
-    if document is None:
+    candidate = await db.scalar(select(Document).where(Document.id == document_id))
+    if candidate is None:
         return
-    test = await db.get(TestRun, document.test_run_id)
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == candidate.test_run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if test is None:
+        return
+    document = await db.scalar(
+        select(Document)
+        .where(Document.id == document_id, Document.test_run_id == test.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if document is None or document.role != "pending":
         return
     storage_key = document.storage_key
     active = await db.scalar(
@@ -242,5 +346,5 @@ async def fail_pending_document(
         ),
     )
     await db.commit()
-    await storage.delete(storage_key)
+    await delete_storage_after_commit(storage, storage_key)
     await publish_change(notifications, test.id)

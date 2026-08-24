@@ -12,15 +12,20 @@ from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOut
 from uvts_api.core.errors import AppError, test_not_found
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
+from uvts_api.ports.question_generator import AgentProductImage
+from uvts_api.ports.storage import DocumentStorage
 from uvts_api.schemas.workspace import (
     CoverageCounts,
     CoverageStatus,
     EvaluationItem,
+    EvaluationSource,
     EvaluationStatus,
     Evidence,
     Gap,
+    ManualStatus,
     Question,
     QuestionResult,
+    QuestionSetStatus,
     Recommendation,
     Report,
     WorkflowStage,
@@ -28,6 +33,7 @@ from uvts_api.schemas.workspace import (
     WorkspaceState,
 )
 from uvts_api.services.documents import update_state
+from uvts_api.services.question_generation import build_question_generation_input
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +58,11 @@ async def start_evaluation(
             message="Wait for the current PDF check to finish before evaluating questions.",
             retryable=True,
         )
-    if state.current_stage != WorkflowStage.QUESTIONS or not state.questions:
+    if (
+        state.question_set is None
+        or state.question_set.status != QuestionSetStatus.CONFIRMED
+        or not state.questions
+    ):
         raise AppError(
             status_code=409,
             code="evaluation_not_ready",
@@ -65,7 +75,13 @@ async def start_evaluation(
             Document.status == "ready",
         )
     )
-    if manual is None or not manual.pages:
+    if (
+        manual is None
+        or not manual.pages
+        or state.manual is None
+        or state.manual.status != ManualStatus.READY
+        or state.manual.id != manual.id
+    ):
         raise AppError(
             status_code=409,
             code="manual_not_ready",
@@ -73,6 +89,10 @@ async def start_evaluation(
         )
 
     operation_id = str(uuid4())
+    source = EvaluationSource(
+        question_set_id=state.question_set.id,
+        manual_id=manual.id,
+    )
     question_ids = [question.id for question in state.questions]
     await db.execute(
         delete(QuestionEvaluationRecord).where(
@@ -84,6 +104,8 @@ async def start_evaluation(
             QuestionEvaluationRecord(
                 test_run_id=test.id,
                 question_id=question_id,
+                question_set_id=source.question_set_id,
+                manual_id=source.manual_id,
                 status=EvaluationStatus.WAITING.value,
             )
             for question_id in question_ids
@@ -99,6 +121,7 @@ async def start_evaluation(
         state.model_copy(
             update={
                 "current_stage": WorkflowStage.EVALUATION,
+                "evaluation_source": source,
                 "evaluation": [
                     EvaluationItem(question_id=question_id, status=EvaluationStatus.WAITING)
                     for question_id in question_ids
@@ -121,13 +144,14 @@ async def start_question_retry(
     test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
+    _ensure_current_evaluation_source(state)
     if question_id not in {question.id for question in state.questions}:
         raise AppError(
             status_code=404,
             code="question_not_found",
             message="This question was not found in the test.",
         )
-    record = await _record_for_question(db, test.id, question_id)
+    record = await _record_for_question(db, state, test.id, question_id)
     if record is None:
         raise AppError(
             status_code=404,
@@ -157,12 +181,17 @@ async def start_failed_retries(
     test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
+    source = _ensure_current_evaluation_source(state)
     records_by_id = {
         record.question_id: record
         for record in (
             await db.scalars(
                 select(QuestionEvaluationRecord).where(
                     QuestionEvaluationRecord.test_run_id == test.id,
+                    QuestionEvaluationRecord.question_set_id
+                    == source.question_set_id,
+                    QuestionEvaluationRecord.manual_id
+                    == source.manual_id,
                     QuestionEvaluationRecord.status == EvaluationStatus.FAILED.value,
                 )
             )
@@ -196,6 +225,7 @@ async def start_report_retry(
     test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
+    _ensure_current_evaluation_source(state)
     if (
         state.report is None
         or state.error is None
@@ -217,16 +247,28 @@ async def start_report_retry(
 async def process_evaluation_operation(
     *,
     db: AsyncSession,
+    storage: DocumentStorage,
     agent: EvaluatorAgent,
     notifications: StateNotifications,
     test_id: str,
     operation_id: str,
     question_ids: Sequence[str],
 ) -> None:
-    context = await _operation_context(db, test_id, operation_id)
+    try:
+        context = await _operation_context(db, storage, test_id, operation_id)
+    except Exception as error:
+        await fail_evaluation_dispatch(
+            db=db,
+            notifications=notifications,
+            test_id=test_id,
+            operation_id=operation_id,
+            question_ids=question_ids,
+            error=error,
+        )
+        return
     if context is None:
         return
-    questions, manual_pages = context
+    questions, manual_pages, product_image, product_description = context
     questions_by_id = {question.id: question for question in questions}
 
     for question_id in question_ids:
@@ -245,6 +287,8 @@ async def process_evaluation_operation(
             output = await agent.evaluate_question(
                 question=question,
                 manual_pages=manual_pages,
+                product_image=product_image,
+                product_description=product_description,
             )
         except Exception as exc:
             logger.warning(
@@ -315,6 +359,7 @@ async def fail_evaluation_dispatch(
     if test.active_operation_id != operation_id:
         return
     state = WorkspaceState.model_validate(test.state)
+    source = _ensure_current_evaluation_source(state)
     report: Report | None
     if question_ids:
         retry_ids = set(question_ids)
@@ -322,7 +367,11 @@ async def fail_evaluation_dispatch(
             (
                 await db.scalars(
                     select(QuestionEvaluationRecord).where(
-                        QuestionEvaluationRecord.test_run_id == test_id
+                        QuestionEvaluationRecord.test_run_id == test_id,
+                        QuestionEvaluationRecord.question_set_id
+                        == source.question_set_id,
+                        QuestionEvaluationRecord.manual_id
+                        == source.manual_id,
                     )
                 )
             ).all()
@@ -346,6 +395,7 @@ async def fail_evaluation_dispatch(
         results = build_question_results(state.questions, records)
         counts = build_coverage_counts(results)
         report = Report(
+            source=state.evaluation_source,
             is_complete=False,
             counts=counts,
             results=results,
@@ -449,23 +499,48 @@ async def _lock_test(db: AsyncSession, test_id: str) -> TestRun:
 
 async def _operation_context(
     db: AsyncSession,
+    storage: DocumentStorage,
     test_id: str,
     operation_id: str,
-) -> tuple[list[Question], list[dict[str, object]]] | None:
+) -> tuple[list[Question], list[dict[str, object]], AgentProductImage | None, str] | None:
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return None
+    state = WorkspaceState.model_validate(test.state)
+    source = _ensure_current_evaluation_source(state)
+    question_set = state.question_set
+    assert question_set is not None
     document = await db.scalar(
         select(Document).where(
             Document.test_run_id == test_id,
+            Document.id == source.manual_id,
             Document.role == "active",
             Document.status == "ready",
         )
     )
     if document is None:
-        return None
-    state = WorkspaceState.model_validate(test.state)
-    return state.questions, list(document.pages)
+        raise AppError(
+            status_code=409,
+            code="evaluation_manual_unavailable",
+            message="The manual selected for this evaluation is no longer available.",
+        )
+    try:
+        product_context = await build_question_generation_input(
+            db=db, storage=storage, test=test
+        )
+        product_image: AgentProductImage | None = product_context.product_image
+        product_description = product_context.product_description
+    except AppError:
+        if question_set.source.value != "legacy_manual_unknown":
+            raise
+        product_image = None
+        product_description = state.configuration.product_description
+    return (
+        question_set.items,
+        list(document.pages),
+        product_image,
+        product_description,
+    )
 
 
 async def _active_test(
@@ -487,15 +562,21 @@ async def _active_test(
 
 async def _record_for_question(
     db: AsyncSession,
+    state: WorkspaceState,
     test_id: str,
     question_id: str,
 ) -> QuestionEvaluationRecord | None:
+    source = state.evaluation_source
+    if source is None:
+        return None
     return cast(
         QuestionEvaluationRecord | None,
         await db.scalar(
             select(QuestionEvaluationRecord).where(
                 QuestionEvaluationRecord.test_run_id == test_id,
                 QuestionEvaluationRecord.question_id == question_id,
+                QuestionEvaluationRecord.question_set_id == source.question_set_id,
+                QuestionEvaluationRecord.manual_id == source.manual_id,
             )
         )
     )
@@ -512,7 +593,8 @@ async def _mark_question_checking(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return False
-    record = await _record_for_question(db, test_id, question_id)
+    state = WorkspaceState.model_validate(test.state)
+    record = await _record_for_question(db, state, test_id, question_id)
     if record is None:
         return True
     record.status = EvaluationStatus.CHECKING.value
@@ -540,7 +622,8 @@ async def _mark_question_failed(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return False
-    record = await _record_for_question(db, test_id, question_id)
+    state = WorkspaceState.model_validate(test.state)
+    record = await _record_for_question(db, state, test_id, question_id)
     if record is None:
         return True
     record.status = EvaluationStatus.FAILED.value
@@ -569,7 +652,8 @@ async def _mark_question_complete(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return False
-    record = await _record_for_question(db, test_id, question.id)
+    state = WorkspaceState.model_validate(test.state)
+    record = await _record_for_question(db, state, test_id, question.id)
     if record is None:
         return True
     result = QuestionResult(
@@ -629,11 +713,16 @@ async def _finalize_report(
     if test is None:
         return
     state = WorkspaceState.model_validate(test.state)
+    source = _ensure_current_evaluation_source(state)
     records = list(
         (
             await db.scalars(
                 select(QuestionEvaluationRecord).where(
-                    QuestionEvaluationRecord.test_run_id == test_id
+                    QuestionEvaluationRecord.test_run_id == test_id,
+                    QuestionEvaluationRecord.question_set_id
+                    == source.question_set_id,
+                    QuestionEvaluationRecord.manual_id
+                    == source.manual_id,
                 )
             )
         ).all()
@@ -667,6 +756,7 @@ async def _finalize_report(
                 update={
                     "current_stage": WorkflowStage.REPORT,
                     "report": Report(
+                        source=state.evaluation_source,
                         is_complete=False,
                         counts=counts,
                         results=results,
@@ -695,7 +785,14 @@ async def _finalize_report(
     if test is None:
         return
     state = WorkspaceState.model_validate(test.state)
-    report = build_report(results=results, counts=counts, synthesis=synthesis)
+    if state.evaluation_source is None:
+        return
+    report = build_report(
+        source=state.evaluation_source,
+        results=results,
+        counts=counts,
+        synthesis=synthesis,
+    )
     test.active_operation_id = None
     test.status = (
         TestStatus.COMPLETE.value if report.is_complete else TestStatus.INCOMPLETE.value
@@ -750,6 +847,7 @@ def build_coverage_counts(results: Sequence[QuestionResult]) -> CoverageCounts:
 
 def build_report(
     *,
+    source: EvaluationSource,
     results: list[QuestionResult],
     counts: CoverageCounts,
     synthesis: ReportSynthesisOutput,
@@ -776,6 +874,7 @@ def build_report(
         for index, item in enumerate(synthesis.recommendations, start=1)
     ]
     return Report(
+        source=source,
         is_complete=counts.failed == 0,
         counts=counts,
         results=results,
@@ -799,6 +898,25 @@ def _failed_result(question: Question) -> QuestionResult:
 def _ensure_no_active_operation(test: TestRun) -> None:
     if test.active_operation_id is not None:
         raise _operation_in_progress()
+
+
+def _ensure_current_evaluation_source(state: WorkspaceState) -> EvaluationSource:
+    source = state.evaluation_source
+    question_set = state.question_set
+    if (
+        source is None
+        or question_set is None
+        or question_set.status != QuestionSetStatus.CONFIRMED
+        or source.question_set_id != question_set.id
+        or state.manual is None
+        or source.manual_id != state.manual.id
+    ):
+        raise AppError(
+            status_code=409,
+            code="evaluation_source_changed",
+            message="The confirmed questions or manual changed. Start a new evaluation.",
+        )
+    return source
 
 
 def _operation_in_progress() -> AppError:

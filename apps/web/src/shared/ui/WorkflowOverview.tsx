@@ -1,10 +1,10 @@
 import { workflowStages, type WorkflowStage } from '../model/workspace';
 
 const labels: Record<WorkflowStage, string> = {
-  upload: 'Upload',
-  configuration: 'Questions',
-  questions: 'Review',
-  evaluation: 'Evaluate',
+  configuration: 'Product setup',
+  questions: 'Review and confirm questions',
+  upload: 'Upload manual',
+  evaluation: 'Evaluation',
   report: 'Report',
 };
 
@@ -14,7 +14,11 @@ interface WorkflowOverviewProps {
   onStageChange: (stage: WorkflowStage) => void;
 }
 
-export function WorkflowOverview({ currentStage, viewedStage, onStageChange }: WorkflowOverviewProps) {
+export function WorkflowOverview({
+  currentStage,
+  viewedStage,
+  onStageChange,
+}: WorkflowOverviewProps) {
   const currentIndex = workflowStages.indexOf(currentStage);
 
   return (

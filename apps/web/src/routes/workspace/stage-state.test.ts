@@ -9,8 +9,9 @@ describe('getStageState', () => {
     expect(workspace).toBeDefined();
     if (!workspace) return;
 
-    expect(getStageState(workspace, 'upload')).toBe('complete');
+    expect(getStageState(workspace, 'configuration')).toBe('complete');
     expect(getStageState(workspace, 'questions')).toBe('active');
+    expect(getStageState(workspace, 'upload')).toBe('locked');
     expect(getStageState(workspace, 'evaluation')).toBe('locked');
   });
 
@@ -19,5 +20,19 @@ describe('getStageState', () => {
     expect(workspace).toBeDefined();
     if (!workspace) return;
     expect(getStageState(workspace, 'evaluation')).toBe('working');
+  });
+
+  it('marks Upload manual as working during a replacement without regressing the workflow', () => {
+    const workspace = getWorkspaceFixture('report-ready');
+    expect(workspace).toBeDefined();
+    if (!workspace) return;
+    workspace.manualUpload = {
+      id: 'pending-manual',
+      filename: 'replacement.pdf',
+      status: 'checking',
+    };
+
+    expect(getStageState(workspace, 'upload')).toBe('working');
+    expect(workspace.currentStage).toBe('report');
   });
 });

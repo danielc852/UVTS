@@ -1,29 +1,36 @@
 import logging
+import re
+import unicodedata
 from dataclasses import dataclass
-from typing import Any
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.ai.openrouter import build_openrouter_model
-from uvts_api.adapters.db.models import Document, TestRun
+from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.question_agent import QuestionAgent
 from uvts_api.core.config import Settings
 from uvts_api.core.errors import AppError, test_not_found
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
+from uvts_api.ports.question_generator import GeneratedQuestionSet, QuestionGenerator
+from uvts_api.ports.storage import DocumentStorage
 from uvts_api.schemas.workspace import (
     ManualStatus,
-    TestConfiguration,
+    Question,
+    QuestionSet,
+    QuestionSetSource,
+    QuestionSetStatus,
     WorkflowStage,
     WorkspaceError,
     WorkspaceState,
 )
-from uvts_api.services.documents import update_state
+from uvts_api.services.documents import delete_storage_after_commit, update_state
+from uvts_api.services.question_generation import build_question_generation_input
 
 logger = logging.getLogger(__name__)
-
 QUESTION_AGENT_TEMPERATURE = 0.0
 
 
@@ -44,7 +51,6 @@ async def begin_question_generation(
     db: AsyncSession,
     notifications: StateNotifications,
     test: TestRun,
-    configuration: TestConfiguration,
     settings: Settings,
 ) -> GenerationOperation:
     locked_test = await db.scalar(
@@ -58,7 +64,6 @@ async def begin_question_generation(
     test = locked_test
     state = WorkspaceState.model_validate(test.state)
     _ensure_generation_allowed(test, state)
-    await _get_ready_manual(db, test, state)
 
     operation = GenerationOperation(test_id=test.id, operation_id=str(uuid4()))
     test.status = TestStatus.GENERATING.value
@@ -72,15 +77,7 @@ async def begin_question_generation(
         "maxRetries": 2,
     }
     test.agent_settings = agent_settings
-    update_state(
-        test,
-        state.model_copy(
-            update={
-                "configuration": configuration,
-                "error": None,
-            }
-        ),
-    )
+    update_state(test, state.model_copy(update={"error": None}))
     await db.commit()
     await publish_question_change(notifications, test.id)
     return operation
@@ -89,8 +86,9 @@ async def begin_question_generation(
 async def process_question_generation(
     *,
     db: AsyncSession,
+    storage: DocumentStorage,
     notifications: StateNotifications,
-    agent: QuestionAgent,
+    agent: QuestionGenerator,
     test_id: str,
     operation_id: str,
 ) -> None:
@@ -99,13 +97,13 @@ async def process_question_generation(
         return
 
     try:
-        state = WorkspaceState.model_validate(test.state)
-        manual = await _get_ready_manual(db, test, state)
-        manual_text = page_labelled_manual_text(manual.pages)
-        questions = await agent.generate(
-            manual_text=manual_text,
-            configuration=state.configuration,
+        request = await build_question_generation_input(db=db, storage=storage, test=test)
+        generated = await agent.generate(request)
+        question_texts = validate_generated_questions(
+            generated,
+            expected_count=request.question_design.total_questions,
         )
+        questions = [Question(id=str(uuid4()), text=text) for text in question_texts]
     except Exception as error:
         await fail_question_generation(
             db=db,
@@ -120,12 +118,22 @@ async def process_question_generation(
     if not _operation_is_active(test, operation_id):
         return
     state = WorkspaceState.model_validate(test.state)
+    question_set = QuestionSet(
+        id=str(uuid4()),
+        status=QuestionSetStatus.DRAFT,
+        source=QuestionSetSource.PRODUCT_CONTEXT,
+        configuration_version=state.configuration.version,
+        generated_at=datetime.now(UTC),
+        confirmed_at=None,
+        items=questions,
+    )
     update_state(
         test,
         state.model_copy(
             update={
                 "current_stage": WorkflowStage.QUESTIONS,
-                "questions": questions,
+                "question_set": question_set,
+                "evaluation_source": None,
                 "evaluation": [],
                 "report": None,
                 "error": None,
@@ -150,22 +158,20 @@ async def fail_question_generation(
     test = await db.get(TestRun, test_id)
     if test is None or not _operation_is_active(test, operation_id):
         return
-
     state = WorkspaceState.model_validate(test.state)
-    error_stage = (
-        WorkflowStage.QUESTIONS if state.questions else WorkflowStage.CONFIGURATION
-    )
+    error_stage = WorkflowStage.QUESTIONS if state.question_set else WorkflowStage.CONFIGURATION
     update_state(
         test,
         state.model_copy(
             update={
+                "current_stage": error_stage,
                 "error": WorkspaceError(
                     code="question_generation_failed",
                     title="Questions were not created",
                     message="UVTS could not create the questions. Try again.",
                     stage=error_stage,
                     retryable=True,
-                )
+                ),
             }
         ),
     )
@@ -183,19 +189,119 @@ async def fail_question_generation(
     await publish_question_change(notifications, test.id)
 
 
-def page_labelled_manual_text(pages: list[dict[str, Any]]) -> str:
-    labelled_pages: list[str] = []
-    has_text = False
-    for page in pages:
-        page_number = page.get("page")
-        text = page.get("text")
-        if not isinstance(page_number, int) or page_number < 1 or not isinstance(text, str):
-            raise ValueError("The stored manual pages are invalid.")
-        has_text = has_text or bool(text.strip())
-        labelled_pages.append(f"[Page {page_number}]\n{text}")
-    if not labelled_pages or not has_text:
-        raise ValueError("The stored manual does not contain readable text.")
-    return "\n\n".join(labelled_pages)
+async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
+    test = await _lock_test(db, test.id)
+    state = WorkspaceState.model_validate(test.state)
+    if test.active_operation_id is not None:
+        raise _operation_in_progress()
+    question_set = state.question_set
+    if question_set is None:
+        raise AppError(
+            status_code=409,
+            code="question_set_not_ready",
+            message="Generate questions before confirming them.",
+        )
+    if question_set.status == QuestionSetStatus.CONFIRMED:
+        raise AppError(
+            status_code=409,
+            code="question_set_confirmed",
+            message="These questions are already confirmed.",
+        )
+    if question_set.source != QuestionSetSource.PRODUCT_CONTEXT:
+        raise AppError(
+            status_code=409,
+            code="question_set_not_confirmable",
+            message=(
+                "Generate a new set from Product setup before confirming these legacy questions."
+            ),
+        )
+    if question_set.configuration_version != state.configuration.version:
+        raise AppError(
+            status_code=409,
+            code="question_set_stale",
+            message="Generate a new set after the latest Product setup changes.",
+        )
+
+    ready_manual = None
+    if state.manual is not None and state.manual.status == ManualStatus.READY:
+        ready_manual = await db.scalar(
+            select(Document).where(
+                Document.id == state.manual.id,
+                Document.test_run_id == test.id,
+                Document.role == "active",
+                Document.status == ManualStatus.READY.value,
+            )
+        )
+    manual_ready = ready_manual is not None
+    update_state(
+        test,
+        state.model_copy(
+            update={
+                "current_stage": (
+                    WorkflowStage.EVALUATION if manual_ready else WorkflowStage.UPLOAD
+                ),
+                "question_set": question_set.model_copy(
+                    update={
+                        "status": QuestionSetStatus.CONFIRMED,
+                        "confirmed_at": datetime.now(UTC),
+                    }
+                ),
+                "error": None,
+            }
+        ),
+    )
+    test.status = (
+        TestStatus.READY.value if manual_ready else TestStatus.QUESTIONS_CONFIRMED.value
+    )
+    await db.commit()
+
+
+async def start_over(
+    *, db: AsyncSession, storage: DocumentStorage, test: TestRun
+) -> None:
+    test = await _lock_test(db, test.id)
+    if test.active_operation_id is not None:
+        raise _operation_in_progress()
+    state = WorkspaceState.model_validate(test.state)
+    documents = list(
+        (
+            await db.scalars(
+                select(Document).where(
+                    Document.test_run_id == test.id,
+                    Document.role.in_(("active", "pending")),
+                )
+            )
+        ).all()
+    )
+    storage_keys = [document.storage_key for document in documents]
+    for document in documents:
+        await db.delete(document)
+    await db.execute(
+        delete(QuestionEvaluationRecord).where(
+            QuestionEvaluationRecord.test_run_id == test.id
+        )
+    )
+    update_state(
+        test,
+        state.model_copy(
+            update={
+                "current_stage": WorkflowStage.CONFIGURATION,
+                "manual": None,
+                "manual_upload": None,
+                "question_set": None,
+                "evaluation_source": None,
+                "evaluation": [],
+                "report": None,
+                "error": None,
+            }
+        ),
+    )
+    test.status = TestStatus.DRAFT.value
+    test.active_operation_id = None
+    test.agent_settings = {}
+    await db.commit()
+    for storage_key in storage_keys:
+        await delete_storage_after_commit(storage, storage_key)
 
 
 async def publish_question_change(
@@ -213,32 +319,21 @@ async def publish_question_change(
 
 def _ensure_generation_allowed(test: TestRun, state: WorkspaceState) -> None:
     if test.active_operation_id is not None:
+        raise _operation_in_progress()
+    if state.question_set is not None and state.question_set.status == QuestionSetStatus.CONFIRMED:
         raise AppError(
             status_code=409,
-            code="operation_in_progress",
-            message="Wait for the current operation to finish before trying again.",
-            retryable=True,
+            code="question_set_confirmed",
+            message="Start over before generating different questions.",
         )
-
-    if state.manual_upload is not None:
+    configuration = state.configuration
+    if configuration.product_image is None or not configuration.product_description.strip():
         raise AppError(
             status_code=409,
-            code="manual_upload_in_progress",
-            message="Wait for the current PDF check to finish before generating questions.",
-            retryable=True,
+            code="question_configuration_incomplete",
+            message="Save a product image and description before creating questions.",
         )
-
-    allowed = {
-        (TestStatus.DRAFT.value, WorkflowStage.CONFIGURATION),
-        (TestStatus.QUESTIONS_READY.value, WorkflowStage.QUESTIONS),
-        (TestStatus.FAILED.value, WorkflowStage.CONFIGURATION),
-        (TestStatus.FAILED.value, WorkflowStage.QUESTIONS),
-    }
-    if (
-        (test.status, state.current_stage) not in allowed
-        or bool(state.evaluation)
-        or state.report is not None
-    ):
+    if state.evaluation or state.report is not None:
         raise AppError(
             status_code=409,
             code="question_generation_not_allowed",
@@ -246,27 +341,54 @@ def _ensure_generation_allowed(test: TestRun, state: WorkspaceState) -> None:
         )
 
 
-async def _get_ready_manual(
-    db: AsyncSession, test: TestRun, state: WorkspaceState
-) -> Document:
-    manual = await db.scalar(
-        select(Document).where(
-            Document.test_run_id == test.id,
-            Document.role == "active",
+def validate_generated_questions(
+    generated: GeneratedQuestionSet,
+    *,
+    expected_count: int,
+) -> list[str]:
+    """Validate provider output at the application boundary before assigning IDs."""
+
+    if len(generated.questions) != expected_count:
+        raise ValueError("The generated total does not match the request.")
+    normalized: set[str] = set()
+    question_texts: list[str] = []
+    for item in generated.questions:
+        text = item.text.strip()
+        if not text:
+            raise ValueError("A generated question is empty.")
+        key = " ".join(
+            part
+            for part in re.split(
+                r"[^\w]+", unicodedata.normalize("NFKC", text).casefold()
+            )
+            if part
         )
+        if not key or key in normalized:
+            raise ValueError("The generated questions are not unique.")
+        normalized.add(key)
+        question_texts.append(text)
+    return question_texts
+
+
+async def _lock_test(db: AsyncSession, test_id: str) -> TestRun:
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == test_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
-    if (
-        manual is None
-        or manual.status != ManualStatus.READY.value
-        or state.manual is None
-        or state.manual.id != manual.id
-    ):
-        raise AppError(
-            status_code=409,
-            code="manual_not_ready",
-            message="Add a ready manual before generating questions.",
-        )
-    return manual
+    if test is None:
+        raise test_not_found()
+    return test
+
+
+def _operation_in_progress() -> AppError:
+    return AppError(
+        status_code=409,
+        code="operation_in_progress",
+        message="Wait for the current operation to finish before trying again.",
+        retryable=True,
+    )
 
 
 def _operation_is_active(test: TestRun, operation_id: str) -> bool:

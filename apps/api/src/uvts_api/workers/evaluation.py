@@ -7,6 +7,7 @@ from uvts_api.adapters.ai.openrouter import build_openrouter_model
 from uvts_api.adapters.db.models import TestRun
 from uvts_api.adapters.db.session import create_engine, create_session_factory
 from uvts_api.adapters.notifications.redis import RedisStateNotifications
+from uvts_api.adapters.storage.local import LocalDocumentStorage
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.core.config import Settings, get_settings
 from uvts_api.services.evaluation import (
@@ -53,6 +54,7 @@ async def _process_evaluation(
                 return
             await process_evaluation_operation(
                 db=db,
+                storage=LocalDocumentStorage(settings.storage_root),
                 agent=agent,
                 notifications=notifications,
                 test_id=test_id,

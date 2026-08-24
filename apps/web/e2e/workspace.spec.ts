@@ -19,7 +19,7 @@ test('shows only the current stage in the clean workspace', async ({ page }) => 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Check a manual' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: '1. Upload manual' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '1. Product setup' })).toBeVisible();
 });
 
 test('restores a completed test from its route', async ({ page }) => {
@@ -30,7 +30,7 @@ test('restores a completed test from its route', async ({ page }) => {
 
 test('moves back through completed steps and forward to the current step', async ({ page }) => {
   await page.goto('/tests/report-ready');
-  await page.getByRole('button', { name: 'Back to Evaluate' }).click();
+  await page.getByRole('button', { name: 'Back to Evaluation' }).click();
   await expect(page.getByRole('heading', { name: '4. Evaluation' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '5. Report' })).not.toBeVisible();
   await page.getByRole('button', { name: 'Continue to Report' }).click();
@@ -40,7 +40,7 @@ test('moves back through completed steps and forward to the current step', async
 test('reflows without horizontal page scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/tests/report-ready');
-  await expect(page.getByRole('heading', { name: 'Report' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '5. Report' })).toBeVisible();
   const widths = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

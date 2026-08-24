@@ -1,6 +1,6 @@
 from uvts_api.adapters.db.models import QuestionEvaluationRecord
 from uvts_api.agents.schemas import ReportSynthesisOutput
-from uvts_api.schemas.workspace import Question, QuestionResult
+from uvts_api.schemas.workspace import EvaluationSource, Question, QuestionResult
 from uvts_api.services.evaluation import (
     FAILED_INFORMATION_NEEDED,
     build_coverage_counts,
@@ -13,9 +13,6 @@ def make_question(question_id: str) -> Question:
     return Question(
         id=question_id,
         text=f"Question {question_id}?",
-        type="Basic",
-        topic="Setup and requirements",
-        viewpoint="Beginner",
     )
 
 
@@ -94,7 +91,12 @@ def test_assigns_stable_gap_and_recommendation_ids() -> None:
         }
     )
 
-    report = build_report(results=[result], counts=counts, synthesis=synthesis)
+    report = build_report(
+        results=[result],
+        counts=counts,
+        synthesis=synthesis,
+        source=EvaluationSource(question_set_id="set-1", manual_id="manual-1"),
+    )
 
     assert report.gaps[0].id == "gap-1"
     assert report.recommendations[0].id == "recommendation-1"

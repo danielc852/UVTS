@@ -2,13 +2,18 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Collapsible, CollapsibleGroup } from '@astryxdesign/core/Collapsible';
+import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
+import { EvaluationRequestError, retryReport } from '../../api/evaluation';
+import { queryKeys } from '../../api/query-keys';
 import type { CoverageStatus, Report } from '../../shared/model/workspace';
 import { StageSection } from '../../shared/ui/StageSection';
 
 interface ReportSectionProps {
   state: 'locked' | 'active';
   report?: Report;
+  testId: string;
 }
 
 const statusLabel: Record<CoverageStatus, string> = {
@@ -25,7 +30,10 @@ const statusVariant: Record<CoverageStatus, 'success' | 'warning' | 'error'> = {
   failed: 'error',
 };
 
-export function ReportSection({ state, report }: ReportSectionProps) {
+export function ReportSection({ state, report, testId }: ReportSectionProps) {
+  const queryClient = useQueryClient();
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string>();
   if (state === 'locked' || !report) {
     return (
       <StageSection
@@ -39,14 +47,40 @@ export function ReportSection({ state, report }: ReportSectionProps) {
 
   const total = Object.values(report.counts).reduce((sum, count) => sum + count, 0);
 
+  const retry = async () => {
+    setIsRetrying(true);
+    setRetryError(undefined);
+    try {
+      const updated = await retryReport(testId);
+      queryClient.setQueryData(queryKeys.test(updated.id), updated);
+    } catch (error) {
+      setRetryError(
+        error instanceof EvaluationRequestError
+          ? error.message
+          : 'The report retry could not be started. Try again.',
+      );
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   return (
     <StageSection number={5} title="Report" state="active">
+      {retryError ? <Banner status="error" title="Report retry failed" description={retryError} /> : null}
       {!report.isComplete ? (
         <Banner
           status="warning"
           title="Report incomplete"
-          description={`${report.counts.failed} question still needs to be checked.`}
-          endContent={<Button label="Retry failed questions" variant="secondary" size="sm" />}
+          description={`${report.counts.failed} ${report.counts.failed === 1 ? 'question still needs' : 'questions still need'} to be checked.`}
+          endContent={
+            <Button
+              label="Retry report"
+              variant="secondary"
+              size="sm"
+              isLoading={isRetrying}
+              onClick={() => void retry()}
+            />
+          }
         />
       ) : null}
 
@@ -65,7 +99,7 @@ export function ReportSection({ state, report }: ReportSectionProps) {
 
       <section aria-labelledby="coverage-overview-heading">
         <h3 id="coverage-overview-heading">Coverage overview</h3>
-        <p>Coverage is grouped by question type, topic, and user viewpoint in the detailed results below.</p>
+        <p>The detailed results below show the manual evidence and gaps for each confirmed question.</p>
       </section>
 
       <section aria-labelledby="question-results-heading">

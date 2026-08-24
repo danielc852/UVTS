@@ -25,37 +25,50 @@ const ReportSection = lazy(() =>
 );
 
 const stepLabels: Record<WorkflowStage, string> = {
-  upload: 'Upload',
-  configuration: 'Questions',
-  questions: 'Review',
-  evaluation: 'Evaluate',
+  configuration: 'Product setup',
+  questions: 'Review and confirm questions',
+  upload: 'Upload manual',
+  evaluation: 'Evaluation',
   report: 'Report',
 };
 
 function WorkspaceStep({ workspace, stage }: { workspace: TestWorkspace; stage: WorkflowStage }) {
+  const state = getStageState(workspace, stage);
   switch (stage) {
-    case 'upload':
-      return <ManualSection workspace={workspace} state="active" />;
     case 'configuration':
       return (
         <Suspense fallback={<p role="status">Loading question settings…</p>}>
-          <ConfigurationSection state="active" configuration={workspace.configuration} error={workspace.error} />
+          <ConfigurationSection
+            testId={workspace.id === 'clean' ? undefined : workspace.id}
+            state={state}
+            configuration={workspace.configuration}
+            error={workspace.error}
+            isLocked={workspace.questionSet?.status === 'confirmed'}
+            isBusy={workspace.status === 'generating'}
+          />
         </Suspense>
       );
     case 'questions':
-      return <QuestionsSection state="active" questions={workspace.questions} />;
+      return <QuestionsSection state={state} workspace={workspace} />;
+    case 'upload':
+      return <ManualSection workspace={workspace} state={state} />;
     case 'evaluation':
       return (
         <EvaluationSection
-          state={getStageState(workspace, 'evaluation') === 'working' ? 'working' : 'active'}
+          state={state}
           questions={workspace.questions}
           evaluation={workspace.evaluation}
+          testId={workspace.id}
         />
       );
     case 'report':
       return (
         <Suspense fallback={<p role="status">Loading report…</p>}>
-          <ReportSection state="active" report={workspace.report} />
+          <ReportSection
+            state={state === 'locked' ? 'locked' : 'active'}
+            report={workspace.report}
+            testId={workspace.id}
+          />
         </Suspense>
       );
   }
@@ -83,7 +96,9 @@ export function WorkspacePage() {
     testId ?? '',
     Boolean(testId) &&
       usesLiveApi &&
-      (Boolean(query.data?.manualUpload) || query.data?.currentStage === 'evaluation'),
+      (Boolean(query.data?.manualUpload) ||
+        query.data?.status === 'generating' ||
+        query.data?.status === 'evaluating'),
   );
 
   if (query.isPending) {
@@ -106,11 +121,20 @@ export function WorkspacePage() {
 
   const workspace = query.data;
   const routeState = location.state as { showUpload?: boolean } | null;
+  const errorStage = workspace.error?.stage;
+  const canShowUpload =
+    workflowStages.indexOf('upload') <= workflowStages.indexOf(workspace.currentStage);
+  const canShowErrorStage =
+    errorStage !== undefined &&
+    workflowStages.indexOf(errorStage) <= workflowStages.indexOf(workspace.currentStage);
+  const initialStage =
+    (routeState?.showUpload && canShowUpload) || workspace.manualUpload
+      ? 'upload'
+      : canShowErrorStage
+        ? errorStage
+        : workspace.currentStage;
   return (
-    <WorkspaceView
-      workspace={workspace}
-      initialStage={routeState?.showUpload ? 'upload' : workspace.currentStage}
-    />
+    <WorkspaceView workspace={workspace} initialStage={initialStage} />
   );
 }
 
@@ -132,7 +156,11 @@ function WorkspaceView({
   const showStage = (stage: WorkflowStage) => {
     if (workflowStages.indexOf(stage) > currentIndex) return;
     setViewedStage(stage);
-    requestAnimationFrame(() => document.getElementById(`stage-${workflowStages.indexOf(stage) + 1}-heading`)?.focus());
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`stage-${workflowStages.indexOf(stage) + 1}-heading`)
+        ?.focus(),
+    );
   };
 
   return (
@@ -141,7 +169,11 @@ function WorkspaceView({
         <p className="workspace-eyebrow">Manual coverage test</p>
         <h1>Check a manual</h1>
         <p>Find information that may be missing from a product manual.</p>
-        <WorkflowOverview currentStage={workspace.currentStage} viewedStage={viewedStage} onStageChange={showStage} />
+        <WorkflowOverview
+          currentStage={workspace.currentStage}
+          viewedStage={viewedStage}
+          onStageChange={showStage}
+        />
       </header>
       <section className="workflow-step" aria-label={`Step ${viewedIndex + 1} of ${workflowStages.length}`}>
         <WorkspaceStep workspace={workspace} stage={viewedStage} />

@@ -1,31 +1,48 @@
 import pytest
 
-from uvts_api.services.questions import page_labelled_manual_text
+from uvts_api.ports.question_generator import (
+    QUESTION_GENERATION_INSTRUCTIONS,
+    GeneratedQuestion,
+    GeneratedQuestionSet,
+)
+from uvts_api.services.questions import validate_generated_questions
 
 
-def test_labels_manual_pages_without_dropping_blank_pages() -> None:
-    assert page_labelled_manual_text(
-        [
-            {"page": 1, "text": "Start here."},
-            {"page": 2, "text": ""},
-            {"page": 3, "text": "Recovery steps."},
+def test_generation_instructions_forbid_manual_grounding_and_answers() -> None:
+    assert "product image and product description" in QUESTION_GENERATION_INSTRUCTIONS
+    assert "Do not answer" in QUESTION_GENERATION_INSTRUCTIONS
+    assert "manual" not in QUESTION_GENERATION_INSTRUCTIONS.casefold()
+
+
+def test_application_boundary_trims_and_validates_provider_questions() -> None:
+    generated = GeneratedQuestionSet(
+        questions=[
+            GeneratedQuestion(text="  How do I begin?  "),
+            GeneratedQuestion(text="What happens at the limit?"),
         ]
-    ) == (
-        "[Page 1]\nStart here.\n\n"
-        "[Page 2]\n\n\n"
-        "[Page 3]\nRecovery steps."
     )
+
+    assert validate_generated_questions(generated, expected_count=2) == [
+        "How do I begin?",
+        "What happens at the limit?",
+    ]
 
 
 @pytest.mark.parametrize(
-    "pages",
+    "questions",
     [
-        [],
-        [{"page": 0, "text": "Content"}],
-        [{"page": 1, "text": 7}],
-        [{"page": 1, "text": "   "}],
+        [GeneratedQuestion(text="Only one question")],
+        [
+            GeneratedQuestion(text="How do I begin?"),
+            GeneratedQuestion(text=" how do I BEGIN "),
+        ],
     ],
 )
-def test_rejects_invalid_or_unreadable_stored_pages(pages: list[dict[str, object]]) -> None:
+def test_application_boundary_rejects_wrong_count_and_normalized_duplicates(
+    questions: list[GeneratedQuestion],
+) -> None:
     with pytest.raises(ValueError):
-        page_labelled_manual_text(pages)
+        validate_generated_questions(
+            GeneratedQuestionSet(questions=questions),
+            expected_count=2,
+        )

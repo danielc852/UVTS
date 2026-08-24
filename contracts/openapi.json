@@ -1,6 +1,32 @@
 {
   "components": {
     "schemas": {
+      "Body_create_test_from_configuration_api_v1_tests_post": {
+        "properties": {
+          "productDescription": {
+            "title": "Productdescription",
+            "type": "string"
+          },
+          "productImage": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Productimage",
+            "type": "string"
+          },
+          "totalQuestions": {
+            "maximum": 15.0,
+            "minimum": 1.0,
+            "title": "Totalquestions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "productDescription",
+          "totalQuestions",
+          "productImage"
+        ],
+        "title": "Body_create_test_from_configuration_api_v1_tests_post",
+        "type": "object"
+      },
       "Body_replace_manual_api_v1_tests__test_id__manual_put": {
         "properties": {
           "file": {
@@ -15,18 +41,36 @@
         "title": "Body_replace_manual_api_v1_tests__test_id__manual_put",
         "type": "object"
       },
-      "Body_upload_initial_manual_api_v1_tests_manual_post": {
+      "Body_save_configuration_api_v1_tests__test_id__configuration_put": {
         "properties": {
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
+          "productDescription": {
+            "title": "Productdescription",
             "type": "string"
+          },
+          "productImage": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productimage"
+          },
+          "totalQuestions": {
+            "maximum": 15.0,
+            "minimum": 1.0,
+            "title": "Totalquestions",
+            "type": "integer"
           }
         },
         "required": [
-          "file"
+          "productDescription",
+          "totalQuestions"
         ],
-        "title": "Body_upload_initial_manual_api_v1_tests_manual_post",
+        "title": "Body_save_configuration_api_v1_tests__test_id__configuration_put",
         "type": "object"
       },
       "CoverageCounts": {
@@ -173,6 +217,25 @@
           "status"
         ],
         "title": "EvaluationItem",
+        "type": "object"
+      },
+      "EvaluationSource": {
+        "additionalProperties": false,
+        "properties": {
+          "manualId": {
+            "title": "Manualid",
+            "type": "string"
+          },
+          "questionSetId": {
+            "title": "Questionsetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionSetId",
+          "manualId"
+        ],
+        "title": "EvaluationSource",
         "type": "object"
       },
       "EvaluationStatus": {
@@ -344,6 +407,38 @@
         "title": "ManualUploadStatus",
         "type": "string"
       },
+      "ProductImageSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "contentType": {
+            "pattern": "^image/",
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "contentType",
+          "sizeBytes"
+        ],
+        "title": "ProductImageSummary",
+        "type": "object"
+      },
       "Question": {
         "additionalProperties": false,
         "properties": {
@@ -352,31 +447,19 @@
             "type": "string"
           },
           "text": {
+            "minLength": 1,
             "title": "Text",
             "type": "string"
-          },
-          "topic": {
-            "title": "Topic",
-            "type": "string"
-          },
-          "type": {
-            "$ref": "#/components/schemas/QuestionType"
-          },
-          "viewpoint": {
-            "$ref": "#/components/schemas/Viewpoint"
           }
         },
         "required": [
           "id",
-          "text",
-          "type",
-          "topic",
-          "viewpoint"
+          "text"
         ],
         "title": "Question",
         "type": "object"
       },
-      "QuestionResult-Input": {
+      "QuestionResult": {
         "additionalProperties": false,
         "properties": {
           "evidence": {
@@ -427,95 +510,88 @@
         "title": "QuestionResult",
         "type": "object"
       },
-      "QuestionResult-Output": {
+      "QuestionSet": {
         "additionalProperties": false,
         "properties": {
-          "evidence": {
-            "items": {
-              "$ref": "#/components/schemas/Evidence"
-            },
-            "title": "Evidence",
-            "type": "array"
-          },
-          "informationFound": {
+          "configurationVersion": {
             "anyOf": [
               {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationversion"
+          },
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Informationfound"
+            "title": "Confirmedat"
           },
-          "informationMissing": {
+          "generatedAt": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Informationmissing"
+            "title": "Generatedat"
           },
-          "informationNeeded": {
-            "title": "Informationneeded",
+          "id": {
+            "title": "Id",
             "type": "string"
           },
-          "question": {
-            "$ref": "#/components/schemas/Question"
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "maxItems": 15,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/QuestionSetSource"
           },
           "status": {
-            "$ref": "#/components/schemas/CoverageStatus"
+            "$ref": "#/components/schemas/QuestionSetStatus"
           }
         },
         "required": [
-          "question",
+          "id",
           "status",
-          "informationNeeded"
+          "source",
+          "items"
         ],
-        "title": "QuestionResult",
+        "title": "QuestionSet",
         "type": "object"
       },
-      "QuestionType": {
+      "QuestionSetSource": {
         "enum": [
-          "Basic",
-          "Cross-paragraph",
-          "Edge-case"
+          "product_context_v1",
+          "legacy_manual_unknown"
         ],
-        "title": "QuestionType",
+        "title": "QuestionSetSource",
         "type": "string"
       },
-      "QuestionTypeCounts": {
-        "additionalProperties": false,
-        "properties": {
-          "basic": {
-            "maximum": 15.0,
-            "minimum": 0.0,
-            "title": "Basic",
-            "type": "integer"
-          },
-          "crossParagraph": {
-            "maximum": 15.0,
-            "minimum": 0.0,
-            "title": "Crossparagraph",
-            "type": "integer"
-          },
-          "edgeCase": {
-            "maximum": 15.0,
-            "minimum": 0.0,
-            "title": "Edgecase",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "basic",
-          "crossParagraph",
-          "edgeCase"
+      "QuestionSetStatus": {
+        "enum": [
+          "draft",
+          "confirmed"
         ],
-        "title": "QuestionTypeCounts",
-        "type": "object"
+        "title": "QuestionSetStatus",
+        "type": "string"
       },
       "ReadyResponse": {
         "properties": {
@@ -583,7 +659,7 @@
         "title": "RecommendationPriority",
         "type": "string"
       },
-      "Report-Input": {
+      "Report": {
         "additionalProperties": false,
         "properties": {
           "counts": {
@@ -616,60 +692,20 @@
           },
           "results": {
             "items": {
-              "$ref": "#/components/schemas/QuestionResult-Input"
+              "$ref": "#/components/schemas/QuestionResult"
             },
             "title": "Results",
             "type": "array"
-          }
-        },
-        "required": [
-          "isComplete",
-          "counts",
-          "results",
-          "gaps",
-          "recommendations",
-          "followUpQuestions"
-        ],
-        "title": "Report",
-        "type": "object"
-      },
-      "Report-Output": {
-        "additionalProperties": false,
-        "properties": {
-          "counts": {
-            "$ref": "#/components/schemas/CoverageCounts"
           },
-          "followUpQuestions": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Followupquestions",
-            "type": "array"
-          },
-          "gaps": {
-            "items": {
-              "$ref": "#/components/schemas/Gap"
-            },
-            "title": "Gaps",
-            "type": "array"
-          },
-          "isComplete": {
-            "title": "Iscomplete",
-            "type": "boolean"
-          },
-          "recommendations": {
-            "items": {
-              "$ref": "#/components/schemas/Recommendation"
-            },
-            "title": "Recommendations",
-            "type": "array"
-          },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/QuestionResult-Output"
-            },
-            "title": "Results",
-            "type": "array"
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -704,13 +740,20 @@
       "TestConfiguration": {
         "additionalProperties": false,
         "properties": {
-          "topics": {
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Topics",
-            "type": "array"
+          "productDescription": {
+            "default": "",
+            "title": "Productdescription",
+            "type": "string"
+          },
+          "productImage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "totalQuestions": {
             "default": 9,
@@ -719,87 +762,14 @@
             "title": "Totalquestions",
             "type": "integer"
           },
-          "typeCounts": {
-            "$ref": "#/components/schemas/QuestionTypeCounts"
-          },
-          "viewpoints": {
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Viewpoints",
-            "type": "array"
+          "version": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "title": "TestConfiguration",
-        "type": "object"
-      },
-      "TestCreateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "configuration": {
-            "$ref": "#/components/schemas/TestConfiguration"
-          },
-          "currentStage": {
-            "$ref": "#/components/schemas/WorkflowStage",
-            "default": "upload"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WorkspaceError"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "evaluation": {
-            "items": {
-              "$ref": "#/components/schemas/EvaluationItem"
-            },
-            "title": "Evaluation",
-            "type": "array"
-          },
-          "manual": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ManualSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "manualUpload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ManualUpload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "questions": {
-            "items": {
-              "$ref": "#/components/schemas/Question"
-            },
-            "title": "Questions",
-            "type": "array"
-          },
-          "report": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Report-Input"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "title": "TestCreateRequest",
         "type": "object"
       },
       "TestResponse": {
@@ -814,7 +784,8 @@
             "type": "string"
           },
           "currentStage": {
-            "$ref": "#/components/schemas/WorkflowStage"
+            "$ref": "#/components/schemas/WorkflowStage",
+            "default": "configuration"
           },
           "error": {
             "anyOf": [
@@ -832,6 +803,16 @@
             },
             "title": "Evaluation",
             "type": "array"
+          },
+          "evaluationSource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "title": "Id",
@@ -857,22 +838,31 @@
               }
             ]
           },
-          "questions": {
-            "items": {
-              "$ref": "#/components/schemas/Question"
-            },
-            "title": "Questions",
-            "type": "array"
-          },
-          "report": {
+          "questionSet": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Report-Output"
+                "$ref": "#/components/schemas/QuestionSet"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Report"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schemaVersion": {
+            "const": 2,
+            "default": 2,
+            "title": "Schemaversion",
+            "type": "integer"
           },
           "stateVersion": {
             "minimum": 1.0,
@@ -889,10 +879,6 @@
           }
         },
         "required": [
-          "currentStage",
-          "configuration",
-          "questions",
-          "evaluation",
           "id",
           "status",
           "stateVersion",
@@ -907,6 +893,8 @@
           "draft",
           "generating",
           "questions_ready",
+          "questions_confirmed",
+          "ready",
           "evaluating",
           "complete",
           "incomplete",
@@ -955,20 +943,11 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "Viewpoint": {
-        "enum": [
-          "Beginner",
-          "Regular user",
-          "Advanced user"
-        ],
-        "title": "Viewpoint",
-        "type": "string"
-      },
       "WorkflowStage": {
         "enum": [
-          "upload",
           "configuration",
           "questions",
+          "upload",
           "evaluation",
           "report"
         ],
@@ -1092,12 +1071,12 @@
     },
     "/api/v1/tests": {
       "post": {
-        "operationId": "create_test_api_v1_tests_post",
+        "operationId": "create_test_from_configuration_api_v1_tests_post",
         "requestBody": {
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/TestCreateRequest"
+                "$ref": "#/components/schemas/Body_create_test_from_configuration_api_v1_tests_post"
               }
             }
           },
@@ -1128,57 +1107,6 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Test",
-        "tags": [
-          "tests"
-        ]
-      }
-    },
-    "/api/v1/tests/manual": {
-      "post": {
-        "operationId": "upload_initial_manual_api_v1_tests_manual_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_upload_initial_manual_api_v1_tests_manual_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
@@ -1186,9 +1114,9 @@
             "description": "Unprocessable Entity"
           }
         },
-        "summary": "Upload Initial Manual",
+        "summary": "Create Test From Configuration",
         "tags": [
-          "documents"
+          "configuration"
         ]
       }
     },
@@ -1251,6 +1179,88 @@
         "summary": "Get Test",
         "tags": [
           "tests"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/configuration": {
+      "put": {
+        "operationId": "save_configuration_api_v1_tests__test_id__configuration_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_save_configuration_api_v1_tests__test_id__configuration_put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Save Configuration",
+        "tags": [
+          "configuration"
         ]
       }
     },
@@ -1758,16 +1768,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestConfiguration"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "202": {
             "content": {
@@ -1821,6 +1821,78 @@
           }
         },
         "summary": "Generate Test Questions",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/questions/confirm": {
+      "post": {
+        "operationId": "confirm_test_questions_api_v1_tests__test_id__questions_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Test Questions",
         "tags": [
           "questions"
         ]
@@ -1895,6 +1967,78 @@
         "summary": "Retry Report",
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/start-over": {
+      "post": {
+        "operationId": "start_test_over_api_v1_tests__test_id__start_over_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Test Over",
+        "tags": [
+          "questions"
         ]
       }
     }

@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Request
 
-from uvts_api.api.dependencies import CurrentSession, DatabaseSession, RuntimeSettings
+from uvts_api.api.dependencies import (
+    CurrentSession,
+    DatabaseSession,
+    DocumentStorageDependency,
+    RuntimeSettings,
+)
 from uvts_api.api.routes.evaluations import dispatch_evaluation
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestResponse
@@ -28,6 +33,7 @@ async def retry_report(
     request: Request,
     current: CurrentSession,
     db: DatabaseSession,
+    storage: DocumentStorageDependency,
     settings: RuntimeSettings,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
@@ -36,6 +42,7 @@ async def retry_report(
     await dispatch_evaluation(
         request=request,
         db=db,
+        storage=storage,
         settings=settings,
         test_id=test_id,
         operation_id=operation_id,

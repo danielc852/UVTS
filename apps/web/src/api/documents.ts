@@ -4,7 +4,7 @@ import { bootstrapSession, parseTestWorkspace } from './workspaces';
 
 interface UploadManualOptions {
   file: File;
-  testId?: string;
+  testId: string;
   onProgress?: (percent: number) => void;
 }
 
@@ -39,14 +39,12 @@ export async function uploadManual({
   onProgress,
 }: UploadManualOptions): Promise<TestWorkspace> {
   await bootstrapSession();
-  const method = testId ? 'PUT' : 'POST';
-  const path = testId ? `/api/v1/tests/${testId}/manual` : '/api/v1/tests/manual';
   const form = new FormData();
   form.append('file', file, file.name);
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open(method, apiUrl(path));
+    xhr.open('PUT', apiUrl(`/api/v1/tests/${testId}/manual`));
     xhr.withCredentials = true;
     xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable && event.total > 0) {

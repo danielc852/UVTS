@@ -5,10 +5,10 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Request, UploadFile
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from starlette.responses import FileResponse
 
-from uvts_api.adapters.db.models import Document, TestRun
+from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord
 from uvts_api.api.dependencies import (
     CurrentSession,
     DatabaseSession,
@@ -18,14 +18,20 @@ from uvts_api.api.dependencies import (
 from uvts_api.core.errors import AppError, manual_not_found
 from uvts_api.domain.enums import TestStatus
 from uvts_api.schemas.errors import ErrorResponse
-from uvts_api.schemas.tests import TestCreateRequest, TestResponse
+from uvts_api.schemas.tests import TestResponse
 from uvts_api.schemas.workspace import (
     ManualUpload,
     ManualUploadStatus,
+    QuestionSetStatus,
     WorkflowStage,
     WorkspaceState,
 )
-from uvts_api.services.documents import process_pending_document, publish_change, update_state
+from uvts_api.services.documents import (
+    delete_storage_after_commit,
+    process_pending_document,
+    publish_change,
+    update_state,
+)
 from uvts_api.services.tests import get_owned_test, to_test_response
 from uvts_api.workers.documents import enqueue_document_processing
 
@@ -33,11 +39,22 @@ router = APIRouter(prefix="/tests", tags=["documents"])
 
 
 async def save_temporary_upload(upload: UploadFile) -> Path:
-    with NamedTemporaryFile(prefix="uvts-upload-", suffix=".pdf", delete=False) as destination:
-        path = Path(destination.name)
-        while chunk := await upload.read(1024 * 1024):
-            destination.write(chunk)
-    await upload.close()
+    path: Path | None = None
+    try:
+        try:
+            with NamedTemporaryFile(
+                prefix="uvts-upload-", suffix=".pdf", delete=False
+            ) as destination:
+                path = Path(destination.name)
+                while chunk := await upload.read(1024 * 1024):
+                    destination.write(chunk)
+        finally:
+            await upload.close()
+    except Exception:
+        if path is not None:
+            await asyncio.to_thread(path.unlink, missing_ok=True)
+        raise
+    assert path is not None
     header = await asyncio.to_thread(read_header, path)
     if b"%PDF-" not in header:
         await asyncio.to_thread(path.unlink, missing_ok=True)
@@ -79,73 +96,6 @@ async def dispatch_processing(
         enqueue_document_processing(document_id)
 
 
-@router.post(
-    "/manual",
-    response_model=TestResponse,
-    status_code=202,
-    responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
-)
-async def upload_initial_manual(
-    request: Request,
-    current: CurrentSession,
-    db: DatabaseSession,
-    storage: DocumentStorageDependency,
-    settings: RuntimeSettings,
-    file: Annotated[UploadFile, File()],
-) -> TestResponse:
-    filename = safe_filename(file)
-    temporary = await save_temporary_upload(file)
-    storage_key = f"{uuid4()}.pdf"
-    try:
-        await storage.put(storage_key, temporary)
-    finally:
-        await asyncio.to_thread(temporary.unlink, missing_ok=True)
-
-    try:
-        initial = TestCreateRequest()
-        test = TestRun(
-            owner_session_id=current.id,
-            state=initial.model_dump(mode="json", by_alias=True),
-        )
-        db.add(test)
-        await db.flush()
-        document = Document(
-            test_run_id=test.id,
-            role="pending",
-            filename=filename,
-            storage_key=storage_key,
-            status=ManualUploadStatus.CHECKING.value,
-        )
-        db.add(document)
-        await db.flush()
-        state = WorkspaceState.model_validate(test.state)
-        test.state = state.model_copy(
-            update={
-                "manual_upload": ManualUpload(
-                    id=document.id,
-                    filename=document.filename,
-                    status=ManualUploadStatus.CHECKING,
-                ),
-                "error": None,
-            }
-        ).model_dump(mode="json", by_alias=True)
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        await storage.delete(storage_key)
-        raise
-    await publish_change(request.app.state.notifications, test.id)
-    await dispatch_processing(
-        request=request,
-        db=db,
-        storage=storage,
-        settings=settings,
-        document_id=document.id,
-    )
-    await db.refresh(test)
-    return to_test_response(test)
-
-
 @router.put(
     "/{test_id}/manual",
     response_model=TestResponse,
@@ -166,7 +116,14 @@ async def replace_manual(
     settings: RuntimeSettings,
     file: Annotated[UploadFile, File()],
 ) -> TestResponse:
-    test = await get_owned_test(db, test_id, current.id)
+    test = await get_owned_test(db, test_id, current.id, for_update=True)
+    state = WorkspaceState.model_validate(test.state)
+    if state.question_set is None or state.question_set.status != QuestionSetStatus.CONFIRMED:
+        raise AppError(
+            status_code=409,
+            code="manual_locked",
+            message="Confirm the question set before uploading a manual.",
+        )
     if test.active_operation_id is not None:
         raise AppError(
             status_code=409,
@@ -202,7 +159,6 @@ async def replace_manual(
         )
         db.add(document)
         await db.flush()
-        state = WorkspaceState.model_validate(test.state)
         update_state(
             test,
             state.model_copy(
@@ -219,7 +175,7 @@ async def replace_manual(
         await db.commit()
     except Exception:
         await db.rollback()
-        await storage.delete(storage_key)
+        await delete_storage_after_commit(storage, storage_key)
         raise
     await publish_change(request.app.state.notifications, test.id)
     await dispatch_processing(
@@ -282,7 +238,7 @@ async def delete_manual(
     db: DatabaseSession,
     storage: DocumentStorageDependency,
 ) -> TestResponse:
-    test = await get_owned_test(db, test_id, current.id)
+    test = await get_owned_test(db, test_id, current.id, for_update=True)
     if test.active_operation_id is not None:
         raise AppError(
             status_code=409,
@@ -292,7 +248,12 @@ async def delete_manual(
         )
     documents = list(
         (
-            await db.scalars(select(Document).where(Document.test_run_id == test.id))
+            await db.scalars(
+                select(Document).where(
+                    Document.test_run_id == test.id,
+                    Document.role.in_(("active", "pending")),
+                )
+            )
         ).all()
     )
     if not documents:
@@ -300,27 +261,46 @@ async def delete_manual(
     storage_keys = [document.storage_key for document in documents]
     for document in documents:
         await db.delete(document)
+    await db.execute(
+        delete(QuestionEvaluationRecord).where(
+            QuestionEvaluationRecord.test_run_id == test.id
+        )
+    )
     state = WorkspaceState.model_validate(test.state)
+    questions_confirmed = (
+        state.question_set is not None
+        and state.question_set.status == QuestionSetStatus.CONFIRMED
+    )
     update_state(
         test,
         state.model_copy(
             update={
-                "current_stage": WorkflowStage.UPLOAD,
+                "current_stage": (
+                    WorkflowStage.UPLOAD
+                    if questions_confirmed
+                    else WorkflowStage.CONFIGURATION
+                ),
                 "manual": None,
                 "manual_upload": None,
-                "questions": [],
+                "evaluation_source": None,
                 "evaluation": [],
                 "report": None,
                 "error": None,
             }
         ),
     )
-    test.status = TestStatus.DRAFT.value
+    test.status = (
+        TestStatus.QUESTIONS_CONFIRMED.value
+        if questions_confirmed
+        else TestStatus.DRAFT.value
+    )
     test.active_operation_id = None
-    test.agent_settings = {}
+    settings = dict(test.agent_settings)
+    settings.pop("evaluator", None)
+    test.agent_settings = settings
     await db.commit()
     await publish_change(request.app.state.notifications, test.id)
     for storage_key in storage_keys:
-        await storage.delete(storage_key)
+        await delete_storage_after_commit(storage, storage_key)
     await db.refresh(test)
     return to_test_response(test)

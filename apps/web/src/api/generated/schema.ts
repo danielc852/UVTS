@@ -64,25 +64,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Test */
-        post: operations["create_test_api_v1_tests_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tests/manual": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Upload Initial Manual */
-        post: operations["upload_initial_manual_api_v1_tests_manual_post"];
+        /** Create Test From Configuration */
+        post: operations["create_test_from_configuration_api_v1_tests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -99,6 +82,23 @@ export interface paths {
         /** Get Test */
         get: operations["get_test_api_v1_tests__test_id__get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tests/{test_id}/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Configuration */
+        put: operations["save_configuration_api_v1_tests__test_id__configuration_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tests/{test_id}/questions/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Test Questions */
+        post: operations["confirm_test_questions_api_v1_tests__test_id__questions_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tests/{test_id}/report/retry": {
         parameters: {
             query?: never;
@@ -243,19 +260,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tests/{test_id}/start-over": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Test Over */
+        post: operations["start_test_over_api_v1_tests__test_id__start_over_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_create_test_from_configuration_api_v1_tests_post */
+        Body_create_test_from_configuration_api_v1_tests_post: {
+            /** Productdescription */
+            productDescription: string;
+            /** Productimage */
+            productImage: string;
+            /** Totalquestions */
+            totalQuestions: number;
+        };
         /** Body_replace_manual_api_v1_tests__test_id__manual_put */
         Body_replace_manual_api_v1_tests__test_id__manual_put: {
             /** File */
             file: string;
         };
-        /** Body_upload_initial_manual_api_v1_tests_manual_post */
-        Body_upload_initial_manual_api_v1_tests_manual_post: {
-            /** File */
-            file: string;
+        /** Body_save_configuration_api_v1_tests__test_id__configuration_put */
+        Body_save_configuration_api_v1_tests__test_id__configuration_put: {
+            /** Productdescription */
+            productDescription: string;
+            /** Productimage */
+            productImage?: string | null;
+            /** Totalquestions */
+            totalQuestions: number;
         };
         /** CoverageCounts */
         CoverageCounts: {
@@ -309,6 +356,13 @@ export interface components {
             /** Questionid */
             questionId: string;
             status: components["schemas"]["EvaluationStatus"];
+        };
+        /** EvaluationSource */
+        EvaluationSource: {
+            /** Manualid */
+            manualId: string;
+            /** Questionsetid */
+            questionSetId: string;
         };
         /**
          * EvaluationStatus
@@ -381,19 +435,26 @@ export interface components {
          * @enum {string}
          */
         ManualUploadStatus: "checking" | "processing";
+        /** ProductImageSummary */
+        ProductImageSummary: {
+            /** Contenttype */
+            contentType: string;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /** Sizebytes */
+            sizeBytes: number;
+        };
         /** Question */
         Question: {
             /** Id */
             id: string;
             /** Text */
             text: string;
-            /** Topic */
-            topic: string;
-            type: components["schemas"]["QuestionType"];
-            viewpoint: components["schemas"]["Viewpoint"];
         };
         /** QuestionResult */
-        "QuestionResult-Input": {
+        QuestionResult: {
             /** Evidence */
             evidence?: components["schemas"]["Evidence"][];
             /** Informationfound */
@@ -405,33 +466,31 @@ export interface components {
             question: components["schemas"]["Question"];
             status: components["schemas"]["CoverageStatus"];
         };
-        /** QuestionResult */
-        "QuestionResult-Output": {
-            /** Evidence */
-            evidence?: components["schemas"]["Evidence"][];
-            /** Informationfound */
-            informationFound?: string | null;
-            /** Informationmissing */
-            informationMissing?: string | null;
-            /** Informationneeded */
-            informationNeeded: string;
-            question: components["schemas"]["Question"];
-            status: components["schemas"]["CoverageStatus"];
+        /** QuestionSet */
+        QuestionSet: {
+            /** Configurationversion */
+            configurationVersion?: number | null;
+            /** Confirmedat */
+            confirmedAt?: string | null;
+            /** Generatedat */
+            generatedAt?: string | null;
+            /** Id */
+            id: string;
+            /** Items */
+            items: components["schemas"]["Question"][];
+            source: components["schemas"]["QuestionSetSource"];
+            status: components["schemas"]["QuestionSetStatus"];
         };
         /**
-         * QuestionType
+         * QuestionSetSource
          * @enum {string}
          */
-        QuestionType: "Basic" | "Cross-paragraph" | "Edge-case";
-        /** QuestionTypeCounts */
-        QuestionTypeCounts: {
-            /** Basic */
-            basic: number;
-            /** Crossparagraph */
-            crossParagraph: number;
-            /** Edgecase */
-            edgeCase: number;
-        };
+        QuestionSetSource: "product_context_v1" | "legacy_manual_unknown";
+        /**
+         * QuestionSetStatus
+         * @enum {string}
+         */
+        QuestionSetStatus: "draft" | "confirmed";
         /** ReadyResponse */
         ReadyResponse: {
             /**
@@ -471,7 +530,7 @@ export interface components {
          */
         RecommendationPriority: "High" | "Medium" | "Low";
         /** Report */
-        "Report-Input": {
+        Report: {
             counts: components["schemas"]["CoverageCounts"];
             /** Followupquestions */
             followUpQuestions: string[];
@@ -482,21 +541,8 @@ export interface components {
             /** Recommendations */
             recommendations: components["schemas"]["Recommendation"][];
             /** Results */
-            results: components["schemas"]["QuestionResult-Input"][];
-        };
-        /** Report */
-        "Report-Output": {
-            counts: components["schemas"]["CoverageCounts"];
-            /** Followupquestions */
-            followUpQuestions: string[];
-            /** Gaps */
-            gaps: components["schemas"]["Gap"][];
-            /** Iscomplete */
-            isComplete: boolean;
-            /** Recommendations */
-            recommendations: components["schemas"]["Recommendation"][];
-            /** Results */
-            results: components["schemas"]["QuestionResult-Output"][];
+            results: components["schemas"]["QuestionResult"][];
+            source?: components["schemas"]["EvaluationSource"] | null;
         };
         /** SessionBootstrapResponse */
         SessionBootstrapResponse: {
@@ -510,50 +556,49 @@ export interface components {
         };
         /** TestConfiguration */
         TestConfiguration: {
-            /** Topics */
-            topics?: string[];
+            /**
+             * Productdescription
+             * @default
+             */
+            productDescription: string;
+            productImage?: components["schemas"]["ProductImageSummary"] | null;
             /**
              * Totalquestions
              * @default 9
              */
             totalQuestions: number;
-            typeCounts?: components["schemas"]["QuestionTypeCounts"];
-            /** Viewpoints */
-            viewpoints?: string[];
-        };
-        /** TestCreateRequest */
-        TestCreateRequest: {
-            configuration?: components["schemas"]["TestConfiguration"];
-            /** @default upload */
-            currentStage: components["schemas"]["WorkflowStage"];
-            error?: components["schemas"]["WorkspaceError"] | null;
-            /** Evaluation */
-            evaluation?: components["schemas"]["EvaluationItem"][];
-            manual?: components["schemas"]["ManualSummary"] | null;
-            manualUpload?: components["schemas"]["ManualUpload"] | null;
-            /** Questions */
-            questions?: components["schemas"]["Question"][];
-            report?: components["schemas"]["Report-Input"] | null;
+            /**
+             * Version
+             * @default 0
+             */
+            version: number;
         };
         /** TestResponse */
         TestResponse: {
-            configuration: components["schemas"]["TestConfiguration"];
+            configuration?: components["schemas"]["TestConfiguration"];
             /**
              * Createdat
              * Format: date-time
              */
             createdAt: string;
+            /** @default configuration */
             currentStage: components["schemas"]["WorkflowStage"];
             error?: components["schemas"]["WorkspaceError"] | null;
             /** Evaluation */
-            evaluation: components["schemas"]["EvaluationItem"][];
+            evaluation?: components["schemas"]["EvaluationItem"][];
+            evaluationSource?: components["schemas"]["EvaluationSource"] | null;
             /** Id */
             id: string;
             manual?: components["schemas"]["ManualSummary"] | null;
             manualUpload?: components["schemas"]["ManualUpload"] | null;
-            /** Questions */
-            questions: components["schemas"]["Question"][];
-            report?: components["schemas"]["Report-Output"] | null;
+            questionSet?: components["schemas"]["QuestionSet"] | null;
+            report?: components["schemas"]["Report"] | null;
+            /**
+             * Schemaversion
+             * @default 2
+             * @constant
+             */
+            schemaVersion: 2;
             /** Stateversion */
             stateVersion: number;
             status: components["schemas"]["TestStatus"];
@@ -567,7 +612,7 @@ export interface components {
          * TestStatus
          * @enum {string}
          */
-        TestStatus: "draft" | "generating" | "questions_ready" | "evaluating" | "complete" | "incomplete" | "failed";
+        TestStatus: "draft" | "generating" | "questions_ready" | "questions_confirmed" | "ready" | "evaluating" | "complete" | "incomplete" | "failed";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -582,15 +627,10 @@ export interface components {
             type: string;
         };
         /**
-         * Viewpoint
-         * @enum {string}
-         */
-        Viewpoint: "Beginner" | "Regular user" | "Advanced user";
-        /**
          * WorkflowStage
          * @enum {string}
          */
-        WorkflowStage: "upload" | "configuration" | "questions" | "evaluation" | "report";
+        WorkflowStage: "configuration" | "questions" | "upload" | "evaluation" | "report";
         /** WorkspaceError */
         WorkspaceError: {
             /**
@@ -687,7 +727,7 @@ export interface operations {
             };
         };
     };
-    create_test_api_v1_tests_post: {
+    create_test_from_configuration_api_v1_tests_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -696,54 +736,12 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TestCreateRequest"];
+                "multipart/form-data": components["schemas"]["Body_create_test_from_configuration_api_v1_tests_post"];
             };
         };
         responses: {
             /** @description Successful Response */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_initial_manual_api_v1_tests_manual_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_initial_manual_api_v1_tests_manual_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -816,6 +814,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_configuration_api_v1_tests__test_id__configuration_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_save_configuration_api_v1_tests__test_id__configuration_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1220,11 +1280,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TestConfiguration"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             202: {
@@ -1273,6 +1329,64 @@ export interface operations {
             };
         };
     };
+    confirm_test_questions_api_v1_tests__test_id__questions_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retry_report_api_v1_tests__test_id__report_retry_post: {
         parameters: {
             query?: never;
@@ -1286,6 +1400,64 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_test_over_api_v1_tests__test_id__start_over_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

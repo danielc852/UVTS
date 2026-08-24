@@ -9,6 +9,7 @@
 body { background: #f5f6f7; margin: 0; min-width: 320px; }
 a { color: inherit; }
 p, li { line-height: 1.55; }
+.workflow-step p, .workflow-step li { overflow-wrap: anywhere; }
 
 .product-link {
   color: var(--color-text-primary, #111);
@@ -125,7 +126,6 @@ p, li { line-height: 1.55; }
 
 .stage-heading-row,
 .action-row,
-.metadata-row,
 .result-trigger,
 .evaluation-list li {
   align-items: center;
@@ -137,12 +137,11 @@ p, li { line-height: 1.55; }
 .stage-heading-row h2 { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -0.025em; margin-block: 0 20px; }
 .stage-status { color: var(--color-text-secondary, #525252); font-weight: 700; }
 .stage-summary { margin-block-end: 0; }
-.number-grid, .summary-grid { display: grid; gap: 16px; grid-template-columns: repeat(3, 1fr); }
+.summary-grid { display: grid; gap: 16px; }
 
 .question-list, .evaluation-list { margin: 0; padding-inline-start: 24px; }
 .question-list li, .evaluation-list li { border-block-end: 1px solid #dedede; padding: 16px 0; }
 .question-list p { margin-block: 0 8px; }
-.metadata-row { justify-content: flex-start; flex-wrap: wrap; color: var(--color-text-secondary, #525252); font-size: 0.875rem; }
 .action-row { justify-content: flex-end; margin-block-start: 24px; }
 .evaluation-list li > span:first-child { max-width: 75%; }
 
@@ -224,12 +223,11 @@ p, li { line-height: 1.55; }
   .workflow-step-marker { height: 28px; width: 28px; }
   .workflow-overview small { display: none; }
   .workflow-step-label > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .number-grid, .summary-grid { grid-template-columns: 1fr; }
+  .summary-grid { grid-template-columns: 1fr; }
   .action-row { align-items: stretch; flex-direction: column; }
   .step-navigation { align-items: stretch; flex-direction: column-reverse; padding: 16px; }
   .step-navigation > div:empty { display: none; }
   .step-navigation button { width: 100%; }
-  .metadata-row { align-items: flex-start; flex-direction: column; }
   .result-trigger { align-items: flex-start; flex-direction: column; }
   .privacy-note { display: none; }
   .manual-ready-heading,

@@ -11,6 +11,7 @@ from uvts_api.agents.schemas import (
     QuestionEvaluationOutput,
     ReportSynthesisOutput,
 )
+from uvts_api.ports.question_generator import AgentProductImage
 from uvts_api.schemas.workspace import Question, QuestionResult
 
 
@@ -48,9 +49,6 @@ def question(question_id: str = "q1") -> Question:
     return Question(
         id=question_id,
         text="How is setup completed?",
-        type="Basic",
-        topic="Setup and requirements",
-        viewpoint="Beginner",
     )
 
 
@@ -81,6 +79,39 @@ async def test_evaluates_with_page_labels_and_normalizes_valid_evidence() -> Non
     assert "[PAGE 1]" in str(messages[1].content)
     assert "[PAGE 2]" in str(messages[1].content)
     assert "answer" in str(messages[0].content).lower()
+
+
+async def test_product_context_is_labelled_interpretation_only_and_manual_is_evidence() -> None:
+    model = FakeChatModel()
+    model.responses[QuestionEvaluationOutput].append(
+        {
+            "status": "not_found",
+            "information_needed": "setup steps",
+            "information_found": None,
+            "information_missing": "all setup steps",
+            "evidence": [],
+        }
+    )
+
+    await EvaluatorAgent(cast(BaseChatModel, model)).evaluate_question(
+        question=question(),
+        manual_pages=[{"page": 1, "text": "No setup instructions are included."}],
+        product_image=AgentProductImage(
+            content=b"private-product-image",
+            content_type="image/png",
+            filename="product.png",
+        ),
+        product_description="A product description that mentions setup.",
+    )
+
+    messages = model.calls[0][1]
+    system = str(messages[0].content).casefold()
+    human = str(messages[1].content)
+    assert "interpretation-only" in system
+    assert "must never count as evidence" in system
+    assert "INTERPRETATION-ONLY PRODUCT CONTEXT" in human
+    assert "MANUAL EVIDENCE SOURCE" in human
+    assert "image" in human
 
 
 @pytest.mark.parametrize(

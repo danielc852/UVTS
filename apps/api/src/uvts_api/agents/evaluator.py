@@ -1,8 +1,11 @@
+import base64
 import json
 from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages.content import create_image_block
 
 from uvts_api.agents.schemas import (
     AgentEvidence,
@@ -11,6 +14,7 @@ from uvts_api.agents.schemas import (
     SynthesizedGap,
     SynthesizedRecommendation,
 )
+from uvts_api.ports.question_generator import AgentProductImage
 from uvts_api.schemas.workspace import CoverageStatus, Question, QuestionResult
 
 type ManualPage = Mapping[str, object]
@@ -20,7 +24,8 @@ information needed by one supplied question. Use only the page-labelled manual t
 answer the question, add outside knowledge, or treat plausible information as present. Return
 short, plain-language descriptions of information needed, found, and missing. Every evidence
 extract must be copied exactly from one supplied page. Use found only when all needed information
-is present, partly_found when some is present, and not_found when none is present."""
+is present, partly_found when some is present, and not_found when none is present. The product
+image and description are interpretation-only context: they must never count as evidence."""
 
 _REPORT_SYSTEM_PROMPT = """You turn persisted manual-coverage results into writing gaps,
 recommendations, and follow-up test questions. Use only the supplied results. Do not answer any
@@ -44,6 +49,8 @@ class EvaluatorAgent:
         *,
         question: Question,
         manual_pages: Sequence[ManualPage],
+        product_image: AgentProductImage | None = None,
+        product_description: str = "",
     ) -> QuestionEvaluationOutput:
         pages = _normalise_pages(manual_pages)
         structured_model = self._model.with_structured_output(
@@ -51,10 +58,22 @@ class EvaluatorAgent:
             method="json_schema",
             strict=True,
         )
+        prompt = _evaluation_prompt(question, pages, product_description)
+        content: list[str | dict[Any, Any]] = [{"type": "text", "text": prompt}]
+        if product_image is not None:
+            content.append(
+                cast(
+                    dict[Any, Any],
+                    create_image_block(
+                        base64=base64.b64encode(product_image.content).decode("ascii"),
+                        mime_type=product_image.content_type,
+                    ),
+                )
+            )
         raw_output = await structured_model.ainvoke(
             [
                 SystemMessage(content=_EVALUATION_SYSTEM_PROMPT),
-                HumanMessage(content=_evaluation_prompt(question, pages)),
+                HumanMessage(content=content),
             ]
         )
         output = QuestionEvaluationOutput.model_validate(raw_output)
@@ -65,12 +84,16 @@ class EvaluatorAgent:
         *,
         question: Question,
         manual_pages: Sequence[ManualPage],
+        product_image: AgentProductImage | None = None,
+        product_description: str = "",
     ) -> QuestionEvaluationOutput:
         """Descriptive alias used by application services and tests."""
 
         return await self.evaluate(
             question=question,
             manual_pages=manual_pages,
+            product_image=product_image,
+            product_description=product_description,
         )
 
     async def synthesize(
@@ -145,14 +168,23 @@ def _normalise_pages(manual_pages: Sequence[ManualPage]) -> dict[int, str]:
     return pages
 
 
-def _evaluation_prompt(question: Question, pages: Mapping[int, str]) -> str:
+def _evaluation_prompt(
+    question: Question,
+    pages: Mapping[int, str],
+    product_description: str = "",
+) -> str:
     question_json = json.dumps(
         question.model_dump(mode="json", by_alias=True), ensure_ascii=False, separators=(",", ":")
     )
     labelled_pages = "\n\n".join(
         f"[PAGE {page}]\n{text}\n[/PAGE {page}]" for page, text in sorted(pages.items())
     )
-    return f"Question record:\n{question_json}\n\nManual pages:\n{labelled_pages}"
+    return (
+        "INTERPRETATION-ONLY PRODUCT CONTEXT (NOT EVIDENCE)\n"
+        f"{product_description}\n\n"
+        f"QUESTION RECORD\n{question_json}\n\n"
+        f"MANUAL EVIDENCE SOURCE\n{labelled_pages}"
+    )
 
 
 def _synthesis_prompt(results: Sequence[QuestionResult]) -> str:

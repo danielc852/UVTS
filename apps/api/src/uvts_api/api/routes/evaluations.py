@@ -6,7 +6,12 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from uvts_api.adapters.ai.openrouter import build_openrouter_model
 from uvts_api.agents.evaluator import EvaluatorAgent
-from uvts_api.api.dependencies import CurrentSession, DatabaseSession, RuntimeSettings
+from uvts_api.api.dependencies import (
+    CurrentSession,
+    DatabaseSession,
+    DocumentStorageDependency,
+    RuntimeSettings,
+)
 from uvts_api.core.config import Settings
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestResponse
@@ -41,6 +46,7 @@ async def evaluate_questions(
     request: Request,
     current: CurrentSession,
     db: DatabaseSession,
+    storage: DocumentStorageDependency,
     settings: RuntimeSettings,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
@@ -53,6 +59,7 @@ async def evaluate_questions(
     await dispatch_evaluation(
         request=request,
         db=db,
+        storage=storage,
         settings=settings,
         test_id=test_id,
         operation_id=operation_id,
@@ -74,6 +81,7 @@ async def retry_question(
     request: Request,
     current: CurrentSession,
     db: DatabaseSession,
+    storage: DocumentStorageDependency,
     settings: RuntimeSettings,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
@@ -86,6 +94,7 @@ async def retry_question(
     await dispatch_evaluation(
         request=request,
         db=db,
+        storage=storage,
         settings=settings,
         test_id=test_id,
         operation_id=operation_id,
@@ -106,6 +115,7 @@ async def retry_failed_questions(
     request: Request,
     current: CurrentSession,
     db: DatabaseSession,
+    storage: DocumentStorageDependency,
     settings: RuntimeSettings,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
@@ -114,6 +124,7 @@ async def retry_failed_questions(
     await dispatch_evaluation(
         request=request,
         db=db,
+        storage=storage,
         settings=settings,
         test_id=test_id,
         operation_id=operation_id,
@@ -127,6 +138,7 @@ async def dispatch_evaluation(
     *,
     request: Request,
     db: DatabaseSession,
+    storage: DocumentStorageDependency,
     settings: Settings,
     test_id: str,
     operation_id: str,
@@ -147,6 +159,7 @@ async def dispatch_evaluation(
             return
         await process_evaluation_operation(
             db=db,
+            storage=storage,
             agent=agent,
             notifications=request.app.state.notifications,
             test_id=test_id,

@@ -1,35 +1,13 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from uvts_api.adapters.db.models import TestRun
 from uvts_api.api.dependencies import CurrentSession, DatabaseSession
 from uvts_api.schemas.errors import ErrorResponse
-from uvts_api.schemas.tests import TestCreateRequest, TestResponse
+from uvts_api.schemas.tests import TestResponse
 from uvts_api.services.events import stream_test_events
 from uvts_api.services.tests import get_owned_test, to_test_response
 
 router = APIRouter(prefix="/tests", tags=["tests"])
-
-
-@router.post(
-    "",
-    response_model=TestResponse,
-    status_code=201,
-    responses={401: {"model": ErrorResponse}},
-)
-async def create_test(
-    payload: TestCreateRequest,
-    current: CurrentSession,
-    db: DatabaseSession,
-) -> TestResponse:
-    test = TestRun(
-        owner_session_id=current.id,
-        state=payload.model_dump(mode="json", by_alias=True),
-    )
-    db.add(test)
-    await db.commit()
-    await db.refresh(test)
-    return to_test_response(test)
 
 
 @router.get(

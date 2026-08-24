@@ -93,6 +93,8 @@ class QuestionEvaluationRecord(Base):
         ForeignKey("test_runs.id", ondelete="CASCADE"), nullable=False
     )
     question_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    question_set_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    manual_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="waiting")
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)

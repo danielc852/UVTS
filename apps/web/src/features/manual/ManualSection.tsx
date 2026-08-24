@@ -5,7 +5,6 @@ import { FileInput } from '@astryxdesign/core/FileInput';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
 import { useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import {
   deleteManual,
@@ -23,7 +22,7 @@ const PdfViewer = lazy(() =>
 
 interface ManualSectionProps {
   workspace: TestWorkspace;
-  state?: 'active' | 'complete';
+  state?: 'locked' | 'active' | 'working' | 'complete';
 }
 
 type Confirmation = 'replace' | 'remove';
@@ -33,7 +32,6 @@ function isPdf(file: File): boolean {
 }
 
 export function ManualSection({ workspace, state = 'active' }: ManualSectionProps) {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>();
@@ -42,16 +40,22 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
   const [actionError, setActionError] = useState<string>();
   const [confirmation, setConfirmation] = useState<Confirmation>();
   const manual = workspace.manual;
-  const testId = workspace.id === 'clean' ? undefined : workspace.id;
-  const hasConnectedData =
-    workspace.questions.length > 0 || workspace.evaluation.length > 0 || Boolean(workspace.report);
+  const testId = workspace.id;
   const isBusy = isSubmitting || Boolean(workspace.manualUpload);
 
-  const storeWorkspace = (updated: TestWorkspace, showUpload = false) => {
+  if (state === 'locked') {
+    return (
+      <StageSection
+        number={3}
+        title="Upload manual"
+        state="locked"
+        lockedText="Confirm the question set before uploading a manual."
+      />
+    );
+  }
+
+  const storeWorkspace = (updated: TestWorkspace) => {
     queryClient.setQueryData(queryKeys.test(updated.id), updated);
-    if (!testId || showUpload) {
-      navigate(`/tests/${updated.id}`, { replace: true, state: { showUpload: true } });
-    }
   };
 
   const submitFile = async (file: File): Promise<boolean> => {
@@ -60,7 +64,10 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
     setUploadProgress(0);
     try {
       const updated = await uploadManual({ file, testId, onProgress: setUploadProgress });
-      storeWorkspace(updated, true);
+      storeWorkspace(updated);
+      if (updated.error?.stage === 'upload') {
+        return false;
+      }
       setSelectedFile(null);
       return true;
     } catch (error) {
@@ -77,7 +84,7 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
   };
 
   const handleFileChange = (value: File | File[] | null) => {
-    const file = value instanceof File ? value : null;
+    const file = value instanceof File ? value : Array.isArray(value) ? (value[0] ?? null) : null;
     setSelectedFile(file);
     setFileError(undefined);
     setActionError(undefined);
@@ -86,7 +93,7 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
       setFileError('Upload a PDF file.');
       return;
     }
-    if (manual && hasConnectedData) {
+    if (manual) {
       setConfirmation('replace');
       return;
     }
@@ -94,7 +101,6 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
   };
 
   const remove = async () => {
-    if (!testId) return;
     setIsSubmitting(true);
     setActionError(undefined);
     try {
@@ -128,7 +134,7 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
 
   return (
     <StageSection
-      number={1}
+      number={3}
       title="Upload manual"
       state={state}
       summary={manual ? `${manual.filename} · ${manual.pageCount} pages · Ready` : undefined}
@@ -159,7 +165,7 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
         </div>
       ) : null}
 
-      {manual && testId ? (
+      {manual ? (
         <div className="manual-ready" aria-live="polite">
           <div className="manual-ready-heading">
             <div>
@@ -180,8 +186,7 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
                 variant="ghost"
                 isDisabled={isBusy}
                 onClick={() => {
-                  if (hasConnectedData) setConfirmation('remove');
-                  else void remove();
+                  setConfirmation('remove');
                 }}
               />
             </div>
@@ -224,8 +229,8 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
         title={confirmation === 'replace' ? 'Replace this manual?' : 'Remove this manual?'}
         description={
           confirmation === 'replace'
-            ? 'When the replacement is ready, connected questions and results will be permanently removed.'
-            : 'The manual, connected questions, evaluation, and report will be permanently removed.'
+            ? 'Confirmed questions and Product setup will remain. When the replacement is ready, evaluation and report data from this manual will be permanently removed.'
+            : 'Product setup and confirmed questions will remain. The manual, evaluation, and report will be permanently removed.'
         }
         actionLabel={confirmation === 'replace' ? 'Replace manual' : 'Remove manual and results'}
         cancelLabel="Cancel"
