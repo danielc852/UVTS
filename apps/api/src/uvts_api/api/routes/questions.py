@@ -75,6 +75,7 @@ async def dispatch_question_generation(
         404: {"model": ErrorResponse},
         409: {"model": ErrorResponse},
         422: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
     },
 )
 async def generate_test_questions(

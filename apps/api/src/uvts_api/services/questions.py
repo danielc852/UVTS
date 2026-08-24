@@ -8,7 +8,7 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from uvts_api.adapters.ai.openrouter import build_openrouter_model
+from uvts_api.adapters.ai.openrouter import build_openrouter_model, is_openrouter_configured
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.question_agent import QuestionAgent
 from uvts_api.core.config import Settings
@@ -64,6 +64,15 @@ async def begin_question_generation(
     test = locked_test
     state = WorkspaceState.model_validate(test.state)
     _ensure_generation_allowed(test, state)
+    if not is_openrouter_configured(settings):
+        raise AppError(
+            status_code=503,
+            code="openrouter_api_key_required",
+            message=(
+                "An OpenRouter API key is required to generate questions. "
+                "Add OPENROUTER_API_KEY to the server environment and restart UVTS."
+            ),
+        )
 
     operation = GenerationOperation(test_id=test.id, operation_id=str(uuid4()))
     test.status = TestStatus.GENERATING.value

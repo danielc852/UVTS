@@ -1,3 +1,7 @@
+import pytest
+from pydantic import SecretStr
+
+from uvts_api.adapters.ai.openrouter import build_openrouter_model, is_openrouter_configured
 from uvts_api.core.config import Settings
 from uvts_api.core.security import hash_session_token
 
@@ -23,3 +27,11 @@ def test_session_hash_is_fixed_length_and_does_not_contain_token() -> None:
 
     assert len(digest) == 64
     assert token not in digest
+
+
+def test_blank_openrouter_key_is_not_configured() -> None:
+    settings = Settings().model_copy(update={"openrouter_api_key": SecretStr("   ")})
+
+    assert is_openrouter_configured(settings) is False
+    with pytest.raises(RuntimeError, match="OpenRouter integration is not configured"):
+        build_openrouter_model(settings)

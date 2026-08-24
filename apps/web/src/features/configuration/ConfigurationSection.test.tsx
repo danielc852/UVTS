@@ -81,6 +81,30 @@ describe('ConfigurationSection', () => {
     expect(configurationApi.generate).toHaveBeenCalledWith('configuration-saved');
   });
 
+  it('shows the required OpenRouter key notice when generation cannot start', async () => {
+    const user = userEvent.setup();
+    const saved = getWorkspaceFixture('configuration-saved');
+    expect(saved).toBeDefined();
+    configurationApi.save.mockResolvedValue(saved);
+    const { QuestionTransitionError } = await import('../../api/questions');
+    configurationApi.generate.mockRejectedValue(
+      new QuestionTransitionError(
+        'An OpenRouter API key is required to generate questions. Add OPENROUTER_API_KEY to the server environment and restart UVTS.',
+      ),
+    );
+    renderApp('/tests/configuration-saved');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Save and generate questions' }),
+    );
+
+    expect(await screen.findByText('Questions were not started')).toBeInTheDocument();
+    expect(
+      screen.getByText(/An OpenRouter API key is required to generate questions/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Creating draft questions')).not.toBeInTheDocument();
+  });
+
   it('prevents duplicate submission while the save is pending', async () => {
     const user = userEvent.setup();
     configurationApi.save.mockImplementation(() => new Promise(() => undefined));

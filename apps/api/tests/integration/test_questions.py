@@ -5,6 +5,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from langchain_core.language_models.chat_models import BaseChatModel
+from pydantic import SecretStr
 from sqlalchemy import event
 
 import uvts_api.api.routes.questions as question_routes
@@ -46,6 +47,7 @@ async def generation_client(
     model = FakeStructuredChatModel(generated_questions())
     notifications = RecordingNotifications()
     app.state.settings.agent_processing_eager = True
+    app.state.settings.openrouter_api_key = SecretStr("test-openrouter-key")
     app.state.notifications = notifications
     monkeypatch.setattr(
         question_routes,
@@ -132,6 +134,37 @@ async def test_generation_needs_no_manual_and_persists_a_draft_set(
     async with app.state.session_factory() as db:
         test = await db.get(RunModel, test_id)
         assert test is not None
+        assert test.active_operation_id is None
+
+
+async def test_generation_requires_an_openrouter_api_key_without_starting_work(
+    app: FastAPI,
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+) -> None:
+    client, model, notifications = generation_client
+    test_id = await configured_test(client)
+    app.state.settings.openrouter_api_key = SecretStr("   ")
+    notifications.published.clear()
+
+    response = await client.post(f"/api/v1/tests/{test_id}/questions")
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "code": "openrouter_api_key_required",
+        "message": (
+            "An OpenRouter API key is required to generate questions. "
+            "Add OPENROUTER_API_KEY to the server environment and restart UVTS."
+        ),
+        "retryable": False,
+        "field_errors": None,
+        "details": None,
+    }
+    assert model.invocations == []
+    assert notifications.published == []
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        assert test.status == "draft"
         assert test.active_operation_id is None
 
 
