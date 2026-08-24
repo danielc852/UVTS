@@ -1,9 +1,10 @@
 import os
 
 import pytest
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from uvts_api.adapters.ai.openrouter import build_model_gateway
+from uvts_api.adapters.ai.openrouter import build_openrouter_model
 from uvts_api.core.config import Settings
 
 
@@ -20,14 +21,16 @@ class SmokeOutput(BaseModel):
 )
 async def test_openrouter_structured_output_smoke() -> None:
     settings = Settings()
-    gateway = build_model_gateway(settings)
-
-    result = await gateway.request_structured(
-        agent_name="openrouter_smoke",
-        system_prompt="Return only the requested structured result.",
-        prompt="Set status to ready.",
-        output_type=SmokeOutput,
-        metadata={"test_id": "smoke"},
+    model = build_openrouter_model(settings)
+    structured_model = model.with_structured_output(
+        SmokeOutput, method="json_schema", strict=True
     )
 
-    assert result.status == "ready"
+    result = await structured_model.ainvoke(
+        [
+            SystemMessage(content="Return only the requested structured result."),
+            HumanMessage(content="Set status to ready."),
+        ]
+    )
+
+    assert SmokeOutput.model_validate(result).status == "ready"

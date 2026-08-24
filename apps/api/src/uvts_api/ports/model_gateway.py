@@ -10,8 +10,6 @@ class ModelGateway(Protocol):
     async def request_structured(
         self,
         *,
-        agent_name: str,
-        system_prompt: str,
         prompt: str,
         output_type: type[ModelOutput],
         metadata: Mapping[str, Any],

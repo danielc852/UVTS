@@ -66,12 +66,6 @@ class Settings(BaseSettings):
             "UVTS_OPENROUTER_REQUEST_TIMEOUT_SECONDS",
         ),
     )
-    agent_max_attempts: int = Field(
-        default=3,
-        ge=1,
-        le=5,
-        validation_alias=AliasChoices("AGENT_MAX_ATTEMPTS", "UVTS_AGENT_MAX_ATTEMPTS"),
-    )
     sse_heartbeat_seconds: float = 15.0
     auto_create_schema: bool = False
 
