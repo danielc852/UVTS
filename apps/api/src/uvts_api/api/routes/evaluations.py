@@ -156,5 +156,5 @@ def _recorded_agent_settings(settings: Settings) -> dict[str, object]:
         "provider": "openrouter",
         "model": settings.openrouter_model,
         "temperature": 0.0,
-        "maxAttempts": settings.agent_max_attempts,
+        "maxAttempts": 3,
     }
