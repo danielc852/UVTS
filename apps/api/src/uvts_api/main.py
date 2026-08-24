@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 
+from uvts_api.adapters.ai.openrouter import build_model_gateway
 from uvts_api.adapters.db.base import Base
 from uvts_api.adapters.db.session import create_engine, create_session_factory
 from uvts_api.adapters.notifications.redis import RedisStateNotifications
@@ -28,6 +29,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             heartbeat_seconds=runtime_settings.sse_heartbeat_seconds,
         )
         app.state.document_storage = LocalDocumentStorage(runtime_settings.storage_root)
+        app.state.model_gateway = build_model_gateway(runtime_settings)
         if runtime_settings.auto_create_schema:
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)

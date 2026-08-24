@@ -38,6 +38,9 @@ packages = ["src/uvts_api"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "openrouter: opt-in live OpenRouter smoke test",
+]
 
 [tool.ruff]
 target-version = "py312"
