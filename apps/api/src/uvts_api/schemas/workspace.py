@@ -1,6 +1,7 @@
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ApiModel(BaseModel):
@@ -106,6 +107,18 @@ class TestConfiguration(ApiModel):
     type_counts: QuestionTypeCounts = Field(default_factory=default_type_counts, alias="typeCounts")
     topics: list[str] = Field(default_factory=default_topics, min_length=1)
     viewpoints: list[str] = Field(default_factory=default_viewpoints, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_type_counts(self) -> Self:
+        counts = self.type_counts
+        values = (counts.basic, counts.cross_paragraph, counts.edge_case)
+        if not any(values):
+            raise ValueError("Choose at least one question type.")
+        if sum(values) != self.total_questions:
+            raise ValueError(
+                f"The questions by type must add up to {self.total_questions}."
+            )
+        return self
 
 
 class Question(ApiModel):
