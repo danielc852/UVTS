@@ -2,9 +2,10 @@ import asyncio
 
 from redis.asyncio import Redis
 
+from uvts_api.adapters.db.models import TestRun
 from uvts_api.adapters.db.session import create_engine, create_session_factory
 from uvts_api.adapters.notifications.redis import RedisStateNotifications
-from uvts_api.core.config import get_settings
+from uvts_api.core.config import Settings, get_settings
 from uvts_api.services.questions import (
     build_question_agent,
     fail_question_generation,
@@ -29,7 +30,9 @@ async def _generate_questions(test_id: str, operation_id: str) -> None:
     try:
         async with session_factory() as db:
             try:
-                agent = build_question_agent(settings)
+                test = await db.get(TestRun, test_id)
+                operation_settings = _settings_for_operation(settings, test)
+                agent = build_question_agent(operation_settings)
             except Exception as error:
                 await fail_question_generation(
                     db=db,
@@ -53,3 +56,19 @@ async def _generate_questions(test_id: str, operation_id: str) -> None:
 
 def enqueue_question_generation(test_id: str, operation_id: str) -> None:
     celery_app.send_task("uvts.questions.generate", args=[test_id, operation_id])
+
+
+def _settings_for_operation(settings: Settings, test: TestRun | None) -> Settings:
+    if test is None:
+        return settings
+    question_settings = test.agent_settings.get("questionAgent")
+    if not isinstance(question_settings, dict):
+        return settings
+    model = question_settings.get("model")
+    timeout = question_settings.get("requestTimeoutSeconds")
+    updates: dict[str, object] = {}
+    if isinstance(model, str) and model.strip():
+        updates["openrouter_model"] = model
+    if isinstance(timeout, int) and not isinstance(timeout, bool) and timeout > 0:
+        updates["openrouter_request_timeout_seconds"] = timeout
+    return settings.model_copy(update=updates)

@@ -189,6 +189,8 @@ async def test_successful_replacement_preserves_configuration_and_clears_results
             "followUpQuestions": [],
         }
         test.state = state
+        test.status = "complete"
+        test.agent_settings = {"questionAgent": {"model": "recorded-model"}}
         await db.commit()
 
     with replacement_path.open("rb") as pdf:
@@ -207,6 +209,44 @@ async def test_successful_replacement_preserves_configuration_and_clears_results
     assert body["questions"] == []
     assert body["evaluation"] == []
     assert body["report"] is None
+    assert body["status"] == "draft"
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        assert test.active_operation_id is None
+        assert test.agent_settings == {}
     content = await client.get(f"/api/v1/tests/{test_id}/manual/content")
     assert content.content == replacement_path.read_bytes()
     assert len(list((tmp_path / "documents").glob("*.pdf"))) == 1
+
+
+async def test_manual_changes_wait_for_active_agent_work(
+    app: FastAPI, client: AsyncClient, tmp_path: Path
+) -> None:
+    original_path = write_pdf(tmp_path / "active-original.pdf")
+    replacement_path = write_pdf(tmp_path / "active-replacement.pdf")
+    await client.post("/api/v1/session")
+    with original_path.open("rb") as pdf:
+        created = await client.post(
+            "/api/v1/tests/manual",
+            files={"file": ("active-original.pdf", pdf, "application/pdf")},
+        )
+    test_id = created.json()["id"]
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        test.active_operation_id = "operation-in-progress"
+        test.status = "generating"
+        await db.commit()
+
+    with replacement_path.open("rb") as pdf:
+        replaced = await client.put(
+            f"/api/v1/tests/{test_id}/manual",
+            files={"file": ("active-replacement.pdf", pdf, "application/pdf")},
+        )
+    deleted = await client.delete(f"/api/v1/tests/{test_id}/manual")
+
+    assert replaced.status_code == 409
+    assert replaced.json()["error"]["code"] == "operation_in_progress"
+    assert deleted.status_code == 409
+    assert deleted.json()["error"]["code"] == "operation_in_progress"

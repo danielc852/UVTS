@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOutput
-from uvts_api.core.errors import AppError
+from uvts_api.core.errors import AppError, test_not_found
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.schemas.workspace import (
@@ -41,9 +41,17 @@ async def start_evaluation(
     test: TestRun,
     agent_settings: Mapping[str, object],
 ) -> tuple[str, list[str]]:
+    test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
+    if state.manual_upload is not None:
+        raise AppError(
+            status_code=409,
+            code="manual_upload_in_progress",
+            message="Wait for the current PDF check to finish before evaluating questions.",
+            retryable=True,
+        )
     if state.current_stage != WorkflowStage.QUESTIONS or not state.questions:
         raise AppError(
             status_code=409,
@@ -82,7 +90,9 @@ async def start_evaluation(
         ]
     )
     test.active_operation_id = operation_id
-    test.agent_settings = dict(agent_settings)
+    recorded_settings = dict(test.agent_settings)
+    recorded_settings["evaluator"] = dict(agent_settings)
+    test.agent_settings = recorded_settings
     test.status = TestStatus.EVALUATING.value
     update_state(
         test,
@@ -108,6 +118,7 @@ async def start_question_retry(
     test: TestRun,
     question_id: str,
 ) -> tuple[str, list[str]]:
+    test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
     if question_id not in {question.id for question in state.questions}:
@@ -143,6 +154,7 @@ async def start_failed_retries(
     db: AsyncSession,
     test: TestRun,
 ) -> tuple[str, list[str]]:
+    test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
     records_by_id = {
@@ -181,6 +193,7 @@ async def start_report_retry(
     db: AsyncSession,
     test: TestRun,
 ) -> tuple[str, list[str]]:
+    test = await _lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
     if (
@@ -285,6 +298,106 @@ async def publish_evaluation_change(
         )
 
 
+async def fail_evaluation_dispatch(
+    *,
+    db: AsyncSession,
+    notifications: StateNotifications,
+    test_id: str,
+    operation_id: str,
+    question_ids: Sequence[str],
+    error: Exception,
+) -> None:
+    await db.rollback()
+    test = await db.get(TestRun, test_id)
+    if test is None:
+        return
+    await db.refresh(test)
+    if test.active_operation_id != operation_id:
+        return
+    state = WorkspaceState.model_validate(test.state)
+    report: Report | None
+    if question_ids:
+        retry_ids = set(question_ids)
+        records = list(
+            (
+                await db.scalars(
+                    select(QuestionEvaluationRecord).where(
+                        QuestionEvaluationRecord.test_run_id == test_id
+                    )
+                )
+            ).all()
+        )
+        for record in records:
+            if record.question_id in retry_ids:
+                record.status = EvaluationStatus.FAILED.value
+                record.result = None
+                record.error = QUESTION_FAILURE_MESSAGE
+        evaluation = [
+            item.model_copy(
+                update={
+                    "status": EvaluationStatus.FAILED,
+                    "error": QUESTION_FAILURE_MESSAGE,
+                }
+            )
+            if item.question_id in retry_ids
+            else item
+            for item in state.evaluation
+        ]
+        results = build_question_results(state.questions, records)
+        counts = build_coverage_counts(results)
+        report = Report(
+            is_complete=False,
+            counts=counts,
+            results=results,
+            gaps=[],
+            recommendations=[],
+            follow_up_questions=[],
+        )
+        workspace_error = WorkspaceError(
+            code="evaluation_dispatch_failed",
+            title="The evaluation could not start",
+            message="The questions were saved, but UVTS could not start checking them. Try again.",
+            stage=WorkflowStage.EVALUATION,
+            retryable=True,
+        )
+    else:
+        evaluation = state.evaluation
+        report = state.report
+        workspace_error = WorkspaceError(
+            code="report_synthesis_failed",
+            title="The report is incomplete",
+            message=(
+                "Question results were saved, but UVTS could not finish the report. "
+                "Try finishing the report again."
+            ),
+            stage=WorkflowStage.REPORT,
+            retryable=True,
+        )
+    test.active_operation_id = None
+    test.status = TestStatus.INCOMPLETE.value
+    update_state(
+        test,
+        state.model_copy(
+            update={
+                "current_stage": WorkflowStage.REPORT,
+                "evaluation": evaluation,
+                "report": report,
+                "error": workspace_error,
+            }
+        ),
+    )
+    await db.commit()
+    logger.warning(
+        "Evaluation job dispatch failed",
+        extra={
+            "test_id": test_id,
+            "operation_id": operation_id,
+            "error_type": type(error).__name__,
+        },
+    )
+    await publish_evaluation_change(notifications, test_id)
+
+
 async def _prepare_retry(
     *,
     db: AsyncSession,
@@ -320,6 +433,18 @@ async def _prepare_retry(
     )
     await db.commit()
     return operation_id
+
+
+async def _lock_test(db: AsyncSession, test_id: str) -> TestRun:
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == test_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if test is None:
+        raise test_not_found()
+    return test
 
 
 async def _operation_context(

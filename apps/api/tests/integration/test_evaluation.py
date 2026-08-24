@@ -2,6 +2,7 @@ from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
 from typing import cast
 
+import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -17,7 +18,7 @@ from uvts_api.adapters.db.models import (
 from uvts_api.adapters.db.models import TestRun as RunModel
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOutput
-from uvts_api.api.routes import evaluations, reports
+from uvts_api.api.routes import evaluations
 from uvts_api.domain.enums import TestStatus as RunStatus
 from uvts_api.schemas.tests import TestCreateRequest as CreateRequest
 from uvts_api.schemas.workspace import ManualStatus, ManualSummary, Question, WorkflowStage
@@ -69,8 +70,6 @@ def make_question(question_id: str) -> Question:
 
 
 async def prepare_evaluation_api(app: FastAPI, fake: FakeChatModel) -> None:
-    app.include_router(evaluations.router, prefix="/api/v1")
-    app.include_router(reports.router, prefix="/api/v1")
     app.state.settings = app.state.settings.model_copy(
         update={"agent_processing_eager": True}
     )
@@ -365,6 +364,35 @@ async def test_stale_operation_cannot_write_a_model_result(
         assert record.status == "checking"
         assert record.result is None
         assert record.attempt == 1
+
+
+async def test_queue_failure_clears_operation_and_keeps_retry_path(
+    app: FastAPI,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_id = await seed_ready_test(app, client, questions=[make_question("q1")])
+    app.state.settings = app.state.settings.model_copy(
+        update={"agent_processing_eager": False}
+    )
+
+    def fail_enqueue(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise ConnectionError("broker unavailable")
+
+    monkeypatch.setattr(evaluations, "enqueue_evaluation_processing", fail_enqueue)
+
+    response = await client.post(f"/api/v1/tests/{test_id}/evaluation")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "incomplete"
+    assert body["error"]["code"] == "evaluation_dispatch_failed"
+    assert body["evaluation"][0]["status"] == "failed"
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        assert test.active_operation_id is None
 
 
 def valid_synthesis(question_id: str) -> dict[str, object]:

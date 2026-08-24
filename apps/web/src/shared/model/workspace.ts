@@ -8,10 +8,10 @@ export type ManualUpload = components['schemas']['ManualUpload'];
 export type Question = components['schemas']['Question'];
 export type EvaluationItem = components['schemas']['EvaluationItem'];
 export type Evidence = components['schemas']['Evidence'];
-export type QuestionResult = components['schemas']['QuestionResult'];
+export type QuestionResult = components['schemas']['QuestionResult-Output'];
 export type Gap = components['schemas']['Gap'];
 export type Recommendation = components['schemas']['Recommendation'];
-export type Report = components['schemas']['Report'];
+export type Report = components['schemas']['Report-Output'];
 export type WorkspaceError = components['schemas']['WorkspaceError'];
 
 type ApiTestConfiguration = components['schemas']['TestConfiguration'];

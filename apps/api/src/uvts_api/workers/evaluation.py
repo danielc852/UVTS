@@ -9,7 +9,10 @@ from uvts_api.adapters.db.session import create_engine, create_session_factory
 from uvts_api.adapters.notifications.redis import RedisStateNotifications
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.core.config import Settings, get_settings
-from uvts_api.services.evaluation import process_evaluation_operation
+from uvts_api.services.evaluation import (
+    fail_evaluation_dispatch,
+    process_evaluation_operation,
+)
 from uvts_api.workers.celery_app import celery_app
 
 
@@ -31,14 +34,27 @@ async def _process_evaluation(
         async with session_factory() as db:
             test = await db.get(TestRun, test_id)
             operation_settings = _settings_for_operation(settings, test)
+            notifications = RedisStateNotifications(
+                redis, heartbeat_seconds=settings.sse_heartbeat_seconds
+            )
+            try:
+                agent = EvaluatorAgent(
+                    build_openrouter_model(operation_settings, temperature=0.0)
+                )
+            except Exception as error:
+                await fail_evaluation_dispatch(
+                    db=db,
+                    notifications=notifications,
+                    test_id=test_id,
+                    operation_id=operation_id,
+                    question_ids=question_ids,
+                    error=error,
+                )
+                return
             await process_evaluation_operation(
                 db=db,
-                agent=EvaluatorAgent(
-                    build_openrouter_model(operation_settings, temperature=0.0)
-                ),
-                notifications=RedisStateNotifications(
-                    redis, heartbeat_seconds=settings.sse_heartbeat_seconds
-                ),
+                agent=agent,
+                notifications=notifications,
                 test_id=test_id,
                 operation_id=operation_id,
                 question_ids=question_ids,
@@ -62,7 +78,14 @@ def enqueue_evaluation_processing(
 def _settings_for_operation(settings: Settings, test: TestRun | None) -> Settings:
     if test is None:
         return settings
-    model = test.agent_settings.get("model")
+    evaluator_settings = test.agent_settings.get("evaluator")
+    if not isinstance(evaluator_settings, dict):
+        return settings
+    model = evaluator_settings.get("model")
+    timeout = evaluator_settings.get("requestTimeoutSeconds")
+    updates: dict[str, object] = {}
     if isinstance(model, str) and model.strip():
-        return settings.model_copy(update={"openrouter_model": model})
-    return settings
+        updates["openrouter_model"] = model
+    if isinstance(timeout, int) and not isinstance(timeout, bool) and timeout > 0:
+        updates["openrouter_request_timeout_seconds"] = timeout
+    return settings.model_copy(update=updates)

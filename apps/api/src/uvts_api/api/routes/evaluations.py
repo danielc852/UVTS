@@ -11,6 +11,7 @@ from uvts_api.core.config import Settings
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestResponse
 from uvts_api.services.evaluation import (
+    fail_evaluation_dispatch,
     process_evaluation_operation,
     publish_evaluation_change,
     start_evaluation,
@@ -132,16 +133,38 @@ async def dispatch_evaluation(
     question_ids: Sequence[str],
 ) -> None:
     if settings.agent_processing_eager:
+        try:
+            agent = _request_evaluator(request, settings)
+        except Exception as error:
+            await fail_evaluation_dispatch(
+                db=db,
+                notifications=request.app.state.notifications,
+                test_id=test_id,
+                operation_id=operation_id,
+                question_ids=question_ids,
+                error=error,
+            )
+            return
         await process_evaluation_operation(
             db=db,
-            agent=_request_evaluator(request, settings),
+            agent=agent,
             notifications=request.app.state.notifications,
             test_id=test_id,
             operation_id=operation_id,
             question_ids=question_ids,
         )
     else:
-        enqueue_evaluation_processing(test_id, operation_id, question_ids)
+        try:
+            enqueue_evaluation_processing(test_id, operation_id, question_ids)
+        except Exception as error:
+            await fail_evaluation_dispatch(
+                db=db,
+                notifications=request.app.state.notifications,
+                test_id=test_id,
+                operation_id=operation_id,
+                question_ids=question_ids,
+                error=error,
+            )
 
 
 def _request_evaluator(request: Request, settings: Settings) -> EvaluatorAgent:
@@ -156,5 +179,6 @@ def _recorded_agent_settings(settings: Settings) -> dict[str, object]:
         "provider": "openrouter",
         "model": settings.openrouter_model,
         "temperature": 0.0,
-        "maxAttempts": 3,
+        "requestTimeoutSeconds": settings.openrouter_request_timeout_seconds,
+        "maxRetries": 2,
     }

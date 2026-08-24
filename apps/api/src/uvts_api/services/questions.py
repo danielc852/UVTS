@@ -63,14 +63,15 @@ async def begin_question_generation(
     operation = GenerationOperation(test_id=test.id, operation_id=str(uuid4()))
     test.status = TestStatus.GENERATING.value
     test.active_operation_id = operation.operation_id
-    test.agent_settings = {
-        "service": "openrouter",
+    agent_settings = dict(test.agent_settings)
+    agent_settings["questionAgent"] = {
+        "provider": "openrouter",
         "model": settings.openrouter_model,
-        "settings": {
-            "temperature": QUESTION_AGENT_TEMPERATURE,
-            "request_timeout_seconds": settings.openrouter_request_timeout_seconds,
-        },
+        "temperature": QUESTION_AGENT_TEMPERATURE,
+        "requestTimeoutSeconds": settings.openrouter_request_timeout_seconds,
+        "maxRetries": 2,
     }
+    test.agent_settings = agent_settings
     update_state(
         test,
         state.model_copy(
@@ -216,6 +217,14 @@ def _ensure_generation_allowed(test: TestRun, state: WorkspaceState) -> None:
             status_code=409,
             code="operation_in_progress",
             message="Wait for the current operation to finish before trying again.",
+            retryable=True,
+        )
+
+    if state.manual_upload is not None:
+        raise AppError(
+            status_code=409,
+            code="manual_upload_in_progress",
+            message="Wait for the current PDF check to finish before generating questions.",
             retryable=True,
         )
 

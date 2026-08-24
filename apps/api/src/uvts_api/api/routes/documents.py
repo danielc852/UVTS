@@ -16,6 +16,7 @@ from uvts_api.api.dependencies import (
     RuntimeSettings,
 )
 from uvts_api.core.errors import AppError, manual_not_found
+from uvts_api.domain.enums import TestStatus
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestCreateRequest, TestResponse
 from uvts_api.schemas.workspace import (
@@ -166,6 +167,13 @@ async def replace_manual(
     file: Annotated[UploadFile, File()],
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
+    if test.active_operation_id is not None:
+        raise AppError(
+            status_code=409,
+            code="operation_in_progress",
+            message="Wait for the current test work to finish before replacing the manual.",
+            retryable=True,
+        )
     pending = await db.scalar(
         select(Document).where(Document.test_run_id == test.id, Document.role == "pending")
     )
@@ -261,7 +269,11 @@ async def manual_content(
 @router.delete(
     "/{test_id}/manual",
     response_model=TestResponse,
-    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    responses={
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
 )
 async def delete_manual(
     test_id: str,
@@ -271,6 +283,13 @@ async def delete_manual(
     storage: DocumentStorageDependency,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
+    if test.active_operation_id is not None:
+        raise AppError(
+            status_code=409,
+            code="operation_in_progress",
+            message="Wait for the current test work to finish before deleting the manual.",
+            retryable=True,
+        )
     documents = list(
         (
             await db.scalars(select(Document).where(Document.test_run_id == test.id))
@@ -296,6 +315,9 @@ async def delete_manual(
             }
         ),
     )
+    test.status = TestStatus.DRAFT.value
+    test.active_operation_id = None
+    test.agent_settings = {}
     await db.commit()
     await publish_change(request.app.state.notifications, test.id)
     for storage_key in storage_keys:

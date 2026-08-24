@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import Document, TestRun
+from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.storage import DocumentStorage
 from uvts_api.schemas.workspace import (
@@ -124,6 +125,9 @@ async def process_pending_document(
             }
         ),
     )
+    test.status = TestStatus.DRAFT.value
+    test.active_operation_id = None
+    test.agent_settings = {}
     await db.commit()
     await publish_change(notifications, test.id)
 

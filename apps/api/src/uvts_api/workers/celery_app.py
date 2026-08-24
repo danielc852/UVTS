@@ -7,7 +7,11 @@ celery_app = Celery(
     "uvts",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["uvts_api.workers.documents"],
+    include=[
+        "uvts_api.workers.documents",
+        "uvts_api.workers.evaluation",
+        "uvts_api.workers.questions",
+    ],
 )
 celery_app.conf.update(
     task_acks_late=True,

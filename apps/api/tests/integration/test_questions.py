@@ -72,7 +72,6 @@ async def generation_client(
     notifications = RecordingNotifications()
     app.state.settings.agent_processing_eager = True
     app.state.notifications = notifications
-    app.include_router(question_routes.router, prefix=app.state.settings.api_v1_prefix)
     monkeypatch.setattr(
         question_routes,
         "build_question_agent",
@@ -130,12 +129,13 @@ async def test_generation_saves_questions_settings_and_state_changes(
         assert test is not None
         assert test.active_operation_id is None
         assert test.agent_settings == {
-            "service": "openrouter",
-            "model": app.state.settings.openrouter_model,
-            "settings": {
+            "questionAgent": {
+                "provider": "openrouter",
+                "model": app.state.settings.openrouter_model,
                 "temperature": 0.0,
-                "request_timeout_seconds": 60,
-            },
+                "requestTimeoutSeconds": 60,
+                "maxRetries": 2,
+            }
         }
 
 

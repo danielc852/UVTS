@@ -2,7 +2,7 @@
 
 UVTS helps manual writers check whether a PDF contains the information that different kinds of users need. This repository contains a React browser application and a FastAPI service.
 
-The current milestone includes the five-stage workspace, private PDF upload and replacement, background page-by-page text extraction, a continuous-scroll PDF viewer, a generated browser/API contract, anonymous browser sessions, durable service infrastructure, and automated checks. AI evaluation is not implemented yet.
+The current milestone includes the five-stage workspace, private PDF upload and replacement, background page-by-page text extraction, a continuous-scroll PDF viewer, a generated browser/API contract, anonymous browser sessions, and automated checks. The backend now has direct LangChain question-generation and manual-evaluation agents, with durable Celery jobs, progress events, retries, and model-setting audit data. Interactive browser wiring for those agent actions remains a separate feature.
 
 ## Repository map
 
@@ -42,4 +42,4 @@ See [repository architecture](docs/architecture/repository.md) for ownership rul
 
 ## Product boundaries
 
-UVTS accepts unencrypted PDFs with 1–20 pages and document-wide extractable text. Scanned documents remain out of scope because OCR is not included. OpenRouter evaluation is not implemented yet. The six grouped topics in `product_spec.md` and `uiux.md` are the canonical first-release taxonomy.
+UVTS accepts unencrypted PDFs with 1–20 pages and document-wide extractable text. Scanned documents remain out of scope because OCR is not included. Agent calls use OpenRouter with the fixed `qwen/qwen3.8-27b` model and do not silently fall back to another model. The six grouped topics in `product_spec.md` and `uiux.md` are the canonical first-release taxonomy.
