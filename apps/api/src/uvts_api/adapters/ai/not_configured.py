@@ -14,9 +14,11 @@ class NotConfiguredModelGateway:
     async def request_structured(
         self,
         *,
+        agent_name: str,
+        system_prompt: str,
         prompt: str,
         output_type: type[ModelOutput],
         metadata: Mapping[str, Any],
     ) -> ModelOutput:
-        del prompt, output_type, metadata
+        del agent_name, system_prompt, prompt, output_type, metadata
         raise ModelGatewayNotConfiguredError("OpenRouter integration is not configured")

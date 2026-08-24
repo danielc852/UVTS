@@ -46,6 +46,10 @@ class Settings(BaseSettings):
             "DOCUMENT_PROCESSING_EAGER", "UVTS_DOCUMENT_PROCESSING_EAGER"
         ),
     )
+    agent_processing_eager: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENT_PROCESSING_EAGER", "UVTS_AGENT_PROCESSING_EAGER"),
+    )
     openrouter_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENROUTER_API_KEY", "UVTS_OPENROUTER_API_KEY"),
@@ -53,6 +57,20 @@ class Settings(BaseSettings):
     openrouter_model: str = Field(
         default="qwen/qwen3.8-27b",
         validation_alias=AliasChoices("OPENROUTER_MODEL", "UVTS_OPENROUTER_MODEL"),
+    )
+    openrouter_request_timeout_seconds: int = Field(
+        default=60,
+        gt=0,
+        validation_alias=AliasChoices(
+            "OPENROUTER_REQUEST_TIMEOUT_SECONDS",
+            "UVTS_OPENROUTER_REQUEST_TIMEOUT_SECONDS",
+        ),
+    )
+    agent_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        validation_alias=AliasChoices("AGENT_MAX_ATTEMPTS", "UVTS_AGENT_MAX_ATTEMPTS"),
     )
     sse_heartbeat_seconds: float = 15.0
     auto_create_schema: bool = False
