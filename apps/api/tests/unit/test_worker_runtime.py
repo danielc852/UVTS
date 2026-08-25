@@ -129,15 +129,18 @@ def test_worker_task_names_and_dispatch_arguments_are_stable(
 def test_workers_restore_recorded_agent_settings_without_mutating_defaults() -> None:
     settings = Settings(
         openrouter_model="current-default",
+        openrouter_fallback_model="current-fallback",
         openrouter_request_timeout_seconds=60,
     )
     recorded_settings = {
         "questionAgent": {
             "model": "recorded-question-model",
+            "fallbackModel": "recorded-question-fallback",
             "requestTimeoutSeconds": 25,
         },
         "evaluator": {
             "model": "recorded-evaluator-model",
+            "fallbackModel": "recorded-evaluator-fallback",
             "requestTimeoutSeconds": 35,
         },
     }
@@ -154,10 +157,13 @@ def test_workers_restore_recorded_agent_settings_without_mutating_defaults() -> 
     )
 
     assert question_settings.openrouter_model == "recorded-question-model"
+    assert question_settings.openrouter_fallback_model == "recorded-question-fallback"
     assert question_settings.openrouter_request_timeout_seconds == 25
     assert evaluator_settings.openrouter_model == "recorded-evaluator-model"
+    assert evaluator_settings.openrouter_fallback_model == "recorded-evaluator-fallback"
     assert evaluator_settings.openrouter_request_timeout_seconds == 35
     assert settings.openrouter_model == "current-default"
+    assert settings.openrouter_fallback_model == "current-fallback"
     assert settings.openrouter_request_timeout_seconds == 60
 
 
@@ -174,6 +180,7 @@ def test_recorded_agent_settings_fall_back_to_defaults(
 ) -> None:
     settings = Settings(
         openrouter_model="current-default",
+        openrouter_fallback_model="current-fallback",
         openrouter_request_timeout_seconds=60,
     )
 
@@ -185,6 +192,7 @@ def test_recorded_agent_settings_fall_back_to_defaults(
 def test_recorded_agent_settings_ignore_invalid_values() -> None:
     settings = Settings(
         openrouter_model="current-default",
+        openrouter_fallback_model="current-fallback",
         openrouter_request_timeout_seconds=60,
     )
 
@@ -193,6 +201,7 @@ def test_recorded_agent_settings_ignore_invalid_values() -> None:
         {
             "evaluator": {
                 "model": " ",
+                "fallbackModel": " ",
                 "requestTimeoutSeconds": True,
             }
         },
@@ -200,4 +209,5 @@ def test_recorded_agent_settings_ignore_invalid_values() -> None:
     )
 
     assert restored.openrouter_model == "current-default"
+    assert restored.openrouter_fallback_model == ""
     assert restored.openrouter_request_timeout_seconds == 60

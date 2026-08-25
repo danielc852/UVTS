@@ -353,6 +353,8 @@ UVTS uses one internal AI agent to support question generation, testing, and rep
 - **AI service:** OpenRouter
 - **Model:** Qwen3.8 27B
 - **OpenRouter model ID:** `qwen/qwen3.8-27b`
+- **Fallback model:** MiniMax M3
+- **Fallback model ID:** `minimax/minimax-m3`
 - **Official model reference:** [Qwen3.8 27B on OpenRouter](https://openrouter.ai/qwen/qwen3.8-27b)
 
 #### What the agent can do
@@ -377,13 +379,13 @@ UVTS uses one internal AI agent to support question generation, testing, and rep
 - All model requests must go through the UVTS server. The OpenRouter access key must never be included in the browser or shown to the writer.
 - Each test must record the service, model ID, and model settings used so the result can be reviewed later.
 - UVTS must check that the model's output follows the required result format before showing it in the report.
-- If OpenRouter or the selected model is unavailable, UVTS should keep the document and test settings and offer Retry.
-- UVTS must not silently replace Qwen3.8 27B with another model. Any future model change must be recorded and tested before release.
+- If Qwen3.8 27B cannot serve a request, OpenRouter should automatically try MiniMax M3 before UVTS offers Retry.
+- UVTS must record both the primary and fallback model IDs used for each operation.
 - Manual content sent to the model must follow the privacy and retention rules in Section 10.
 
 #### The feature is complete when
 
-- Question generation, information checking, and recommendations use `qwen/qwen3.8-27b` through OpenRouter.
+- Question generation, information checking, and recommendations use `qwen/qwen3.8-27b` through OpenRouter, with `minimax/minimax-m3` as the fallback.
 - The OpenRouter access key is only available on the UVTS server.
 - Every successful information-presence result follows the three agreed statuses and evidence rules.
 - No test result contains an AI-generated answer to the question.

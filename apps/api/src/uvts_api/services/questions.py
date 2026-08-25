@@ -79,6 +79,7 @@ async def begin_question_generation(
     agent_settings["questionAgent"] = {
         "provider": "openrouter",
         "model": settings.openrouter_model,
+        "fallbackModel": settings.openrouter_fallback_model,
         "temperature": QUESTION_AGENT_TEMPERATURE,
         "requestTimeoutSeconds": settings.openrouter_request_timeout_seconds,
         "maxRetries": 2,

@@ -85,3 +85,45 @@ def test_openrouter_api_key_is_trimmed_before_sdk_construction(
     api_key = captured_options["openrouter_api_key"]
     assert isinstance(api_key, SecretStr)
     assert api_key.get_secret_value() == "test-key"
+
+
+def test_openrouter_uses_minimax_m3_as_the_model_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    def capture_model_options(**options: object) -> object:
+        captured_options.update(options)
+        return object()
+
+    monkeypatch.setattr(openrouter, "ChatOpenRouter", capture_model_options)
+    settings = Settings().model_copy(update={"openrouter_api_key": SecretStr("test-key")})
+
+    build_openrouter_model(settings)
+
+    assert captured_options["model_name"] == "qwen/qwen3.8-27b"
+    assert captured_options["model_kwargs"] == {"models": ["minimax/minimax-m3"]}
+
+
+@pytest.mark.parametrize("fallback_model", ["", "  ", "qwen/qwen3.8-27b"])
+def test_openrouter_omits_an_empty_or_duplicate_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    fallback_model: str,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    def capture_model_options(**options: object) -> object:
+        captured_options.update(options)
+        return object()
+
+    monkeypatch.setattr(openrouter, "ChatOpenRouter", capture_model_options)
+    settings = Settings().model_copy(
+        update={
+            "openrouter_api_key": SecretStr("test-key"),
+            "openrouter_fallback_model": fallback_model,
+        }
+    )
+
+    build_openrouter_model(settings)
+
+    assert captured_options["model_kwargs"] == {}

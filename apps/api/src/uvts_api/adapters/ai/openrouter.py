@@ -15,8 +15,15 @@ def build_openrouter_model(settings: Settings, *, temperature: float = 0.0) -> C
 
     api_key = settings.openrouter_api_key
     assert api_key is not None
+    fallback_model = settings.openrouter_fallback_model.strip()
+    model_kwargs = (
+        {"models": [fallback_model]}
+        if fallback_model and fallback_model != settings.openrouter_model
+        else {}
+    )
     return ChatOpenRouter(
         model_name=settings.openrouter_model,
+        model_kwargs=model_kwargs,
         openrouter_api_key=SecretStr(api_key.get_secret_value().strip()),
         temperature=temperature,
         request_timeout=settings.openrouter_request_timeout_seconds * 1_000,

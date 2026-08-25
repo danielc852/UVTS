@@ -170,7 +170,9 @@ See [repository architecture](docs/architecture/repository.md) for ownership rul
 UVTS accepts unencrypted PDFs with 1–20 pages and document-wide extractable text.
 Question setup accepts one private `image/*` product file up to 10 MB, a non-empty
 product description, and 1–15 questions. Scanned documents remain out of scope
-because OCR is not included. Agent calls use OpenRouter with the fixed
-`qwen/qwen3.8-27b` model and do not silently fall back to another model. Question
+because OCR is not included. Agent calls use `qwen/qwen3.8-27b` through OpenRouter,
+which automatically tries `minimax/minimax-m3` when the primary model fails. Set
+`OPENROUTER_FALLBACK_MODEL` to change the fallback or leave it blank to disable
+model fallback. Question
 types, topic selection, user viewpoints, and per-type question counts are deferred
 from the basic V1 workflow.

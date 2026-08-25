@@ -71,6 +71,13 @@ class Settings(BaseSettings):
         default="qwen/qwen3.8-27b",
         validation_alias=AliasChoices("OPENROUTER_MODEL", "UVTS_OPENROUTER_MODEL"),
     )
+    openrouter_fallback_model: str = Field(
+        default="minimax/minimax-m3",
+        validation_alias=AliasChoices(
+            "OPENROUTER_FALLBACK_MODEL",
+            "UVTS_OPENROUTER_FALLBACK_MODEL",
+        ),
+    )
     openrouter_request_timeout_seconds: int = Field(
         default=60,
         gt=0,
