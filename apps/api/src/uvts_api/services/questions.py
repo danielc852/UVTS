@@ -10,14 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.ai.openrouter import build_openrouter_model, is_openrouter_configured
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
-from uvts_api.agents.question_agent import QuestionAgent
+from uvts_api.agents.question_generation import QuestionAgent
 from uvts_api.core.config import Settings
 from uvts_api.core.errors import AppError
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.question_generator import (
-    QUESTION_SUGGESTION_INSTRUCTIONS,
     GeneratedQuestionSet,
+    GenerationMode,
     QuestionGenerator,
 )
 from uvts_api.ports.storage import DocumentStorage
@@ -313,7 +313,7 @@ async def suggest_question(
             storage=storage,
             test=test,
             total_questions=1,
-            instructions=QUESTION_SUGGESTION_INSTRUCTIONS,
+            mode=GenerationMode.SUGGESTION,
             direction=clean_direction,
             existing_questions=clean_existing,
         )

@@ -1,17 +1,14 @@
 import pytest
 
-from uvts_api.ports.question_generator import (
-    QUESTION_GENERATION_INSTRUCTIONS,
-    GeneratedQuestion,
-    GeneratedQuestionSet,
-)
+from uvts_api.agents.question_generation.prompts import QUESTION_GENERATION_SYSTEM_PROMPT
+from uvts_api.ports.question_generator import GeneratedQuestion, GeneratedQuestionSet
 from uvts_api.services.questions import validate_generated_questions
 
 
 def test_generation_instructions_forbid_manual_grounding_and_answers() -> None:
-    assert "product image and product description" in QUESTION_GENERATION_INSTRUCTIONS
-    assert "Do not answer" in QUESTION_GENERATION_INSTRUCTIONS
-    assert "manual" not in QUESTION_GENERATION_INSTRUCTIONS.casefold()
+    assert "text and images" in QUESTION_GENERATION_SYSTEM_PROMPT
+    assert "Do not answer" in QUESTION_GENERATION_SYSTEM_PROMPT
+    assert "Do not mention a manual" in QUESTION_GENERATION_SYSTEM_PROMPT
 
 
 def test_application_boundary_trims_and_validates_provider_questions() -> None:

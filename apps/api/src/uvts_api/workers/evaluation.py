@@ -3,7 +3,7 @@ from collections.abc import Sequence
 
 from uvts_api.adapters.ai.openrouter import build_openrouter_model
 from uvts_api.adapters.db.models import TestRun
-from uvts_api.agents.evaluator import EvaluatorAgent
+from uvts_api.agents.suite import EvaluationAgentSuite
 from uvts_api.services.evaluation import (
     fail_evaluation_dispatch,
     process_evaluation_operation,
@@ -31,7 +31,7 @@ async def _process_evaluation(
             agent="evaluator",
         )
         try:
-            agent = EvaluatorAgent(
+            agent = EvaluationAgentSuite(
                 build_openrouter_model(operation_settings, temperature=0.0)
             )
         except Exception as error:

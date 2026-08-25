@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uvts_api.adapters.db.models import Document, TestRun
 from uvts_api.core.errors import AppError
 from uvts_api.ports.question_generator import (
-    QUESTION_GENERATION_INSTRUCTIONS,
     AgentProductImage,
+    GenerationMode,
     QuestionDesign,
     QuestionGenerationInput,
 )
@@ -21,7 +21,7 @@ async def build_question_generation_input(
     storage: DocumentStorage,
     test: TestRun,
     total_questions: int | None = None,
-    instructions: str | None = None,
+    mode: GenerationMode = GenerationMode.GENERATION,
     direction: str | None = None,
     existing_questions: tuple[str, ...] = (),
 ) -> QuestionGenerationInput:
@@ -71,7 +71,7 @@ async def build_question_generation_input(
         question_design=QuestionDesign(
             total_questions=total_questions or configuration.total_questions
         ),
+        mode=mode,
         direction=direction,
         existing_questions=existing_questions,
-        instructions=instructions or QUESTION_GENERATION_INSTRUCTIONS,
     )

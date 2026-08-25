@@ -6,7 +6,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.ai.openrouter import build_openrouter_model
-from uvts_api.agents.evaluator import EvaluatorAgent
+from uvts_api.agents.suite import EvaluationAgentSuite
 from uvts_api.core.config import Settings
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.storage import DocumentStorage
@@ -154,8 +154,10 @@ class OperationDispatcher:
             return
         await operation
 
-    def _request_evaluator(self) -> EvaluatorAgent:
+    def _request_evaluator(self) -> EvaluationAgentSuite:
         configured = getattr(self._request.app.state, "chat_model", None)
         if configured is not None:
-            return EvaluatorAgent(cast(BaseChatModel, configured))
-        return EvaluatorAgent(build_openrouter_model(self._settings, temperature=0.0))
+            return EvaluationAgentSuite(cast(BaseChatModel, configured))
+        return EvaluationAgentSuite(
+            build_openrouter_model(self._settings, temperature=0.0)
+        )

@@ -2,22 +2,11 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from uvts_api.schemas.workspace import GapKind, QuestionType, RecommendationPriority, Viewpoint
+from uvts_api.schemas.workspace import GapKind, RecommendationPriority
 
 
 class AgentModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class GeneratedQuestion(AgentModel):
-    text: str = Field(min_length=1)
-    type: QuestionType
-    topic: str = Field(min_length=1)
-    viewpoint: Viewpoint
-
-
-class GeneratedQuestionSet(AgentModel):
-    questions: list[GeneratedQuestion] = Field(min_length=1, max_length=15)
 
 
 class AgentEvidence(AgentModel):

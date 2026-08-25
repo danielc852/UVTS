@@ -6,7 +6,7 @@ from httpx import AsyncClient
 
 from tests.integration.test_question_configuration import create_setup
 from uvts_api.adapters.db.models import TestRun as RunModel
-from uvts_api.ports.question_generator import QUESTION_GENERATION_INSTRUCTIONS
+from uvts_api.ports.question_generator import GenerationMode
 from uvts_api.schemas.workspace import (
     ManualStatus,
     ManualSummary,
@@ -45,16 +45,19 @@ async def test_agent_input_contains_only_saved_product_context(
         "product_image",
         "product_description",
         "question_design",
-        "instructions",
+        "mode",
+        "direction",
+        "existing_questions",
     }
     assert request.product_image.content == b"private-product-image"
     assert request.product_image.content_type == "image/png"
     assert request.product_image.filename == "product.png"
     assert request.product_description == "A portable weather sensor."
     assert request.question_design.total_questions == 6
-    assert request.instructions == QUESTION_GENERATION_INSTRUCTIONS
+    assert request.mode is GenerationMode.GENERATION
+    assert request.direction is None
+    assert request.existing_questions == ()
     assert "manual" not in request.__dict__
-    assert "Do not answer" in request.instructions
 
 
 async def test_confirmation_does_not_trust_a_stale_manual_summary(

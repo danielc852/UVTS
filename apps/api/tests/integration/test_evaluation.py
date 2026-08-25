@@ -20,8 +20,9 @@ from uvts_api.adapters.db.models import (
     QuestionEvaluationRecord,
 )
 from uvts_api.adapters.db.models import TestRun as RunModel
-from uvts_api.agents.evaluator import EvaluatorAgent
-from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOutput
+from uvts_api.agents.manual_evaluation.schemas import AtomicEvaluationOutput
+from uvts_api.agents.schemas import ReportSynthesisOutput
+from uvts_api.agents.suite import EvaluationAgentSuite
 from uvts_api.domain.enums import TestStatus as RunStatus
 from uvts_api.schemas.workspace import (
     ManualStatus,
@@ -103,11 +104,27 @@ async def prepare_evaluation_api(app: FastAPI, fake: FakeChatModel) -> None:
 
 def found_output() -> dict[str, object]:
     return {
-        "status": "found",
-        "information_needed": "Setup state",
-        "information_found": "Setup is complete",
-        "information_missing": None,
-        "evidence": [{"page": 1, "extract": "Setup is complete."}],
+        "requirements": [
+            {
+                "requirement": "Setup state",
+                "status": "found",
+                "finding": "Setup is complete",
+                "evidence": [{"page": 1, "extract": "Setup is complete."}],
+            }
+        ]
+    }
+
+
+def not_found_output(requirement: str) -> dict[str, object]:
+    return {
+        "requirements": [
+            {
+                "requirement": requirement,
+                "status": "not_found",
+                "finding": None,
+                "evidence": [],
+            }
+        ]
     }
 
 
@@ -185,7 +202,7 @@ async def test_evaluation_runs_model_calls_up_to_configured_concurrency(
         client,
         questions=[make_question(f"q{index}") for index in range(5)],
     )
-    fake.responses[QuestionEvaluationOutput].extend(found_output() for _ in range(5))
+    fake.responses[AtomicEvaluationOutput].extend(found_output() for _ in range(5))
     active_calls = 0
     maximum_active_calls = 0
 
@@ -195,7 +212,7 @@ async def test_evaluation_runs_model_calls_up_to_configured_concurrency(
     ) -> None:
         nonlocal active_calls, maximum_active_calls
         del messages
-        if schema is not QuestionEvaluationOutput:
+        if schema is not AtomicEvaluationOutput:
             return
         active_calls += 1
         maximum_active_calls = max(maximum_active_calls, active_calls)
@@ -233,7 +250,7 @@ async def test_rate_limit_retry_honors_shared_cooldown_before_admitting_waiter(
         client,
         questions=[make_question("q1"), make_question("q2"), make_question("q3")],
     )
-    fake.responses[QuestionEvaluationOutput].extend(
+    fake.responses[AtomicEvaluationOutput].extend(
         [FakeRateLimitError("0.03"), found_output(), found_output(), found_output()]
     )
     invocation_times: list[float] = []
@@ -243,7 +260,7 @@ async def test_rate_limit_retry_honors_shared_cooldown_before_admitting_waiter(
         messages: list[BaseMessage],
     ) -> None:
         del messages
-        if schema is QuestionEvaluationOutput:
+        if schema is AtomicEvaluationOutput:
             invocation_times.append(asyncio.get_running_loop().time())
 
     fake.on_invoke = record_invocation
@@ -278,7 +295,7 @@ async def test_rate_limit_without_retry_after_uses_backoff_and_exhaustion_is_iso
         client,
         questions=[make_question("q1"), make_question("q2")],
     )
-    fake.responses[QuestionEvaluationOutput].extend(
+    fake.responses[AtomicEvaluationOutput].extend(
         [
             FakeRateLimitError(None),
             found_output(),
@@ -312,15 +329,9 @@ async def test_evaluation_continues_after_failure_and_retry_preserves_completed_
     await prepare_evaluation_api(app, fake)
     questions = [make_question("q1"), make_question("q2")]
     test_id = await seed_ready_test(app, client, questions=questions)
-    fake.responses[QuestionEvaluationOutput].extend(
+    fake.responses[AtomicEvaluationOutput].extend(
         [
-            {
-                "status": "found",
-                "information_needed": "Setup state",
-                "information_found": "Setup is complete",
-                "information_missing": None,
-                "evidence": [{"page": 1, "extract": "Setup is complete."}],
-            },
+            found_output(),
             RuntimeError("provider request included private details"),
         ]
     )
@@ -357,15 +368,7 @@ async def test_evaluation_continues_after_failure_and_retry_preserves_completed_
         "failed": 1,
     }
 
-    fake.responses[QuestionEvaluationOutput].append(
-        {
-            "status": "not_found",
-            "information_needed": "A recovery limit",
-            "information_found": None,
-            "information_missing": "The recovery limit",
-            "evidence": [],
-        }
-    )
+    fake.responses[AtomicEvaluationOutput].append(not_found_output("The recovery limit"))
     fake.responses[ReportSynthesisOutput].append(valid_synthesis("q2"))
     retried = await client.post(f"/api/v1/tests/{test_id}/evaluation/q2/retry")
 
@@ -404,15 +407,7 @@ async def test_report_failure_retains_results_and_report_retry_does_not_rerun_qu
     fake = FakeChatModel()
     await prepare_evaluation_api(app, fake)
     test_id = await seed_ready_test(app, client, questions=[make_question("q1")])
-    fake.responses[QuestionEvaluationOutput].append(
-        {
-            "status": "not_found",
-            "information_needed": "Recovery details",
-            "information_found": None,
-            "information_missing": "Recovery details",
-            "evidence": [],
-        }
-    )
+    fake.responses[AtomicEvaluationOutput].append(not_found_output("Recovery details"))
     fake.responses[ReportSynthesisOutput].append(RuntimeError("provider unavailable"))
 
     evaluated = await client.post(f"/api/v1/tests/{test_id}/evaluation")
@@ -441,7 +436,7 @@ async def test_report_failure_retains_results_and_report_retry_does_not_rerun_qu
     assert retry_body["status"] == "complete"
     assert retry_body["error"] is None
     assert retry_body["report"]["gaps"][0]["affectedQuestionIds"] == ["q1"]
-    assert [schema for schema, _ in fake.calls].count(QuestionEvaluationOutput) == 1
+    assert [schema for schema, _ in fake.calls].count(AtomicEvaluationOutput) == 1
     async with app.state.session_factory() as db:
         record = (await db.scalars(select(QuestionEvaluationRecord))).one()
         assert record.attempt == 1
@@ -458,28 +453,27 @@ async def test_retry_failed_endpoint_processes_only_failures_sequentially(
         client,
         questions=[make_question("q1"), make_question("q2")],
     )
-    fake.responses[QuestionEvaluationOutput].extend(
+    fake.responses[AtomicEvaluationOutput].extend(
         [RuntimeError("first"), RuntimeError("second")]
     )
     first = await client.post(f"/api/v1/tests/{test_id}/evaluation")
     assert first.status_code == 202
     assert first.json()["report"]["counts"]["failed"] == 2
 
-    fake.responses[QuestionEvaluationOutput].extend(
+    fake.responses[AtomicEvaluationOutput].extend(
         [
+            found_output(),
             {
-                "status": "found",
-                "information_needed": "Setup state",
-                "information_found": "Setup is complete",
-                "information_missing": None,
-                "evidence": [{"page": 1, "extract": "Setup is complete."}],
-            },
-            {
-                "status": "found",
-                "information_needed": "Recovery steps",
-                "information_found": "Recovery steps exist",
-                "information_missing": None,
-                "evidence": [{"page": 1, "extract": "Follow the recovery steps."}],
+                "requirements": [
+                    {
+                        "requirement": "Recovery steps",
+                        "status": "found",
+                        "finding": "Recovery steps exist",
+                        "evidence": [
+                            {"page": 1, "extract": "Follow the recovery steps."}
+                        ],
+                    }
+                ]
             },
         ]
     )
@@ -506,15 +500,7 @@ async def test_stale_operation_cannot_write_a_model_result(
 ) -> None:
     fake = FakeChatModel()
     test_id = await seed_ready_test(app, client, questions=[make_question("q1")])
-    fake.responses[QuestionEvaluationOutput].append(
-        {
-            "status": "found",
-            "information_needed": "Setup state",
-            "information_found": "Setup is complete",
-            "information_missing": None,
-            "evidence": [{"page": 1, "extract": "Setup is complete."}],
-        }
-    )
+    fake.responses[AtomicEvaluationOutput].append(found_output())
     async with app.state.session_factory() as db:
         test = await db.get(RunModel, test_id)
         assert test is not None
@@ -535,7 +521,7 @@ async def test_stale_operation_cannot_write_a_model_result(
         await process_evaluation_operation(
             db=db,
             storage=app.state.document_storage,
-            agent=EvaluatorAgent(cast(BaseChatModel, fake)),
+            agent=EvaluationAgentSuite(cast(BaseChatModel, fake)),
             notifications=app.state.notifications,
             test_id=test_id,
             operation_id=operation_id,

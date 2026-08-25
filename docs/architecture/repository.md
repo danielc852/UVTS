@@ -38,6 +38,16 @@ Server state and mutations belong in TanStack Query. Form state belongs in React
 
 Document storage, PDF extraction, model access, job publication, and repositories are ports so later features can be tested without network or filesystem dependencies. Queue messages contain record identifiers rather than document text.
 
+### Agent boundaries
+
+The internal model layer is divided by responsibility. Question generation uses trusted system
+policy plus explicitly untrusted product context and returns temporary coverage labels that are
+discarded before questions are saved. Manual evaluation breaks each question into atomic needs,
+validates exact page evidence, and deterministically folds those needs into the public coverage
+result. Report synthesis receives only incomplete or missing results and validates that every gap
+and recommendation remains traceable. Shared structured-output handling provides strict schemas,
+safe provider errors, rate-limit metadata, and one bounded repair attempt.
+
 ## Contract ownership
 
 FastAPI generates `contracts/openapi.json`. The web application generates its TypeScript definitions from that committed snapshot under `apps/web/src/shared/api/generated`. Continuous integration regenerates both outputs and fails when a change was not committed.

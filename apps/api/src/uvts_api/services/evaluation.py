@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.errors import EvaluatorRateLimitError, describe_evaluator_failure
-from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput
+from uvts_api.agents.suite import EvaluationAgentSuite
 from uvts_api.core.errors import AppError
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
@@ -280,7 +280,7 @@ async def process_evaluation_operation(
     *,
     db: AsyncSession,
     storage: DocumentStorage,
-    agent: EvaluatorAgent,
+    agent: EvaluationAgentSuite,
     notifications: StateNotifications,
     test_id: str,
     operation_id: str,
@@ -380,7 +380,7 @@ async def process_evaluation_operation(
 
 async def _evaluate_question_with_rate_limit_retries(
     *,
-    agent: EvaluatorAgent,
+    agent: EvaluationAgentSuite,
     question: Question,
     manual_pages: Sequence[Mapping[str, object]],
     product_image: AgentProductImage | None,
@@ -828,7 +828,7 @@ async def _update_evaluation_item(
 async def _finalize_report(
     *,
     db: AsyncSession,
-    agent: EvaluatorAgent,
+    agent: EvaluationAgentSuite,
     notifications: StateNotifications,
     test_id: str,
     operation_id: str,

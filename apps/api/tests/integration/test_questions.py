@@ -15,8 +15,13 @@ from tests.fake_models import FakeStructuredChatModel
 from tests.integration.test_question_configuration import create_setup, save_setup
 from uvts_api.adapters.db.models import Document
 from uvts_api.adapters.db.models import TestRun as RunModel
-from uvts_api.agents.question_agent import QuestionAgent
-from uvts_api.ports.question_generator import GeneratedQuestion, GeneratedQuestionSet
+from uvts_api.agents.question_generation import QuestionAgent
+from uvts_api.agents.question_generation.schemas import (
+    CoverageArea,
+    PlannedQuestion,
+    PlannedQuestionSet,
+    ScenarioType,
+)
 
 
 class RecordingNotifications:
@@ -32,12 +37,24 @@ class RecordingNotifications:
             yield
 
 
-def generated_questions(prefix: str = "") -> GeneratedQuestionSet:
-    return GeneratedQuestionSet(
+def generated_questions(prefix: str = "") -> PlannedQuestionSet:
+    return PlannedQuestionSet(
         questions=[
-            GeneratedQuestion(text=f"{prefix}How do I begin?"),
-            GeneratedQuestion(text=f"{prefix}Where are the main requirements listed?"),
-            GeneratedQuestion(text=f"{prefix}What if a setup step cannot finish?"),
+            PlannedQuestion(
+                text=f"{prefix}How do I begin?",
+                coverage_area=CoverageArea.SETUP_FIRST_USE,
+                scenario_type=ScenarioType.ROUTINE,
+            ),
+            PlannedQuestion(
+                text=f"{prefix}Where are the main requirements listed?",
+                coverage_area=CoverageArea.NORMAL_OPERATION,
+                scenario_type=ScenarioType.ROUTINE,
+            ),
+            PlannedQuestion(
+                text=f"{prefix}What if a setup step cannot finish?",
+                coverage_area=CoverageArea.TROUBLESHOOTING_RECOVERY,
+                scenario_type=ScenarioType.EDGE_CASE,
+            ),
         ]
     )
 
@@ -310,8 +327,14 @@ async def test_suggests_one_question_from_direction_without_changing_the_draft(
     test_id = await configured_test(client)
     generated = await client.post(f"/api/v1/tests/{test_id}/questions")
     before = generated.json()
-    model.response = GeneratedQuestionSet(
-        questions=[GeneratedQuestion(text="  Can I use the sensor during heavy rain?  ")]
+    model.response = PlannedQuestionSet(
+        questions=[
+            PlannedQuestion(
+                text="  Can I use the sensor during heavy rain?  ",
+                coverage_area=CoverageArea.LIMITS_COMPATIBILITY,
+                scenario_type=ScenarioType.EDGE_CASE,
+            )
+        ]
     )
     notifications.published.clear()
 
@@ -330,8 +353,8 @@ async def test_suggests_one_question_from_direction_without_changing_the_draft(
     assert response.json() == {"text": "Can I use the sensor during heavy rain?"}
     content = cast(list[dict[str, str]], model.invocations[-1][1].content)
     rendered = content[0]["text"]
-    assert "USER DIRECTION\nAsk about outdoor use in bad weather." in rendered
-    assert "EXISTING QUESTIONS TO AVOID" in rendered
+    assert '"user_direction": "Ask about outdoor use in bad weather."' in rendered
+    assert '"existing_questions"' in rendered
     assert "A locally added question?" in rendered
     current = (await client.get(f"/api/v1/tests/{test_id}")).json()
     assert current["questionSet"] == before["questionSet"]

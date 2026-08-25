@@ -1,6 +1,6 @@
 """Internal UVTS agents."""
 
-from uvts_api.agents.evaluator import EvaluatorAgent
-from uvts_api.agents.question_agent import QuestionAgent
+from uvts_api.agents.question_generation import QuestionAgent
+from uvts_api.agents.suite import EvaluationAgentSuite
 
-__all__ = ["EvaluatorAgent", "QuestionAgent"]
+__all__ = ["EvaluationAgentSuite", "QuestionAgent"]
