@@ -4,4 +4,4 @@ The problem was discovered after asking whether UVTS had a test for calling an O
 
 ## Is it solved?
 
-Not yet in the repository code. The root cause and proposed solution are confirmed, and the live smoke test passes with the corrected timeout, but the adapter conversion, API-key normalization, and regression tests still need to be implemented and committed before the problem can be marked solved.
+Yes. The shared OpenRouter adapter now converts the public timeout setting from seconds to milliseconds at the `ChatOpenRouter` boundary and trims the API key before passing it to the SDK. Focused regression tests cover the 60-second to 60,000-millisecond conversion, surrounding key whitespace, and blank-key rejection. The full API test suite passes locally; the opt-in live smoke test remains skipped unless explicitly enabled with an API key.

@@ -1,6 +1,7 @@
 import pytest
 from pydantic import SecretStr
 
+from uvts_api.adapters.ai import openrouter
 from uvts_api.adapters.ai.openrouter import build_openrouter_model, is_openrouter_configured
 from uvts_api.core.config import Settings
 from uvts_api.core.security import hash_session_token
@@ -35,3 +36,46 @@ def test_blank_openrouter_key_is_not_configured() -> None:
     assert is_openrouter_configured(settings) is False
     with pytest.raises(RuntimeError, match="OpenRouter integration is not configured"):
         build_openrouter_model(settings)
+
+
+def test_openrouter_timeout_is_converted_from_seconds_to_milliseconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    def capture_model_options(**options: object) -> object:
+        captured_options.update(options)
+        return object()
+
+    monkeypatch.setattr(openrouter, "ChatOpenRouter", capture_model_options)
+    settings = Settings().model_copy(
+        update={
+            "openrouter_api_key": SecretStr("test-key"),
+            "openrouter_request_timeout_seconds": 60,
+        }
+    )
+
+    build_openrouter_model(settings)
+
+    assert captured_options["request_timeout"] == 60_000
+
+
+def test_openrouter_api_key_is_trimmed_before_sdk_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    def capture_model_options(**options: object) -> object:
+        captured_options.update(options)
+        return object()
+
+    monkeypatch.setattr(openrouter, "ChatOpenRouter", capture_model_options)
+    settings = Settings().model_copy(
+        update={"openrouter_api_key": SecretStr("  test-key\n")}
+    )
+
+    build_openrouter_model(settings)
+
+    api_key = captured_options["openrouter_api_key"]
+    assert isinstance(api_key, SecretStr)
+    assert api_key.get_secret_value() == "test-key"
