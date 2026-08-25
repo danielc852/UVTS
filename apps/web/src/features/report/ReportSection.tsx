@@ -2,13 +2,12 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Collapsible, CollapsibleGroup } from '@astryxdesign/core/Collapsible';
-import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { EvaluationRequestError, retryReport } from '../../api/evaluation';
-import { queryKeys } from '../../api/query-keys';
-import type { CoverageStatus, Report } from '../../shared/model/workspace';
+import { storeWorkspace } from '../../entities/workspace/query';
+import type { CoverageStatus, Report } from '../../entities/workspace/model';
 import { StageSection } from '../../shared/ui/StageSection';
+import { ReportRequestError, retryReport } from './api';
 
 interface ReportSectionProps {
   state: 'locked' | 'active';
@@ -30,10 +29,19 @@ const statusVariant: Record<CoverageStatus, 'success' | 'warning' | 'error'> = {
   failed: 'error',
 };
 
+function reportRetryError(error: Error | null): string | undefined {
+  if (!error) return undefined;
+  if (error instanceof ReportRequestError) return error.message;
+  return 'The report retry could not be started. Try again.';
+}
+
 export function ReportSection({ state, report, testId }: ReportSectionProps) {
   const queryClient = useQueryClient();
-  const [isRetrying, setIsRetrying] = useState(false);
-  const [retryError, setRetryError] = useState<string>();
+  const retryMutation = useMutation({
+    mutationFn: () => retryReport(testId),
+    onSuccess: (updated) => storeWorkspace(queryClient, updated),
+  });
+  const retryError = reportRetryError(retryMutation.error);
   if (state === 'locked' || !report) {
     return (
       <StageSection
@@ -46,23 +54,6 @@ export function ReportSection({ state, report, testId }: ReportSectionProps) {
   }
 
   const total = Object.values(report.counts).reduce((sum, count) => sum + count, 0);
-
-  const retry = async () => {
-    setIsRetrying(true);
-    setRetryError(undefined);
-    try {
-      const updated = await retryReport(testId);
-      queryClient.setQueryData(queryKeys.test(updated.id), updated);
-    } catch (error) {
-      setRetryError(
-        error instanceof EvaluationRequestError
-          ? error.message
-          : 'The report retry could not be started. Try again.',
-      );
-    } finally {
-      setIsRetrying(false);
-    }
-  };
 
   return (
     <StageSection number={5} title="Report" state="active">
@@ -77,8 +68,8 @@ export function ReportSection({ state, report, testId }: ReportSectionProps) {
               label="Retry report"
               variant="secondary"
               size="sm"
-              isLoading={isRetrying}
-              onClick={() => void retry()}
+              isLoading={retryMutation.isPending}
+              onClick={() => retryMutation.mutate()}
             />
           }
         />

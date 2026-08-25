@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from './fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 
-vi.mock('./workspaces', () => ({
+vi.mock('../../entities/workspace/api', () => ({
   bootstrapSession: vi.fn().mockResolvedValue(undefined),
   parseTestWorkspace: (value: unknown) => value,
 }));
@@ -21,7 +21,7 @@ describe('question transitions', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const api = await import('./questions');
+    const api = await import('./api');
 
     await api[method]('test-1');
 

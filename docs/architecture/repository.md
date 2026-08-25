@@ -19,9 +19,18 @@ PostgreSQL is the source of truth. Redis carries job and progress notifications 
 
 ### Browser
 
-`apps/web/src/features` is organized by the five user-visible stages. A feature owns its components, state adapters, and tests. Routes compose features but do not contain business rules. `shared` contains only small UVTS utilities and accessibility helpers; Astryx remains the component and interaction source of truth.
+The browser uses a small layered, feature-first structure:
 
-Server state belongs in TanStack Query. Form state belongs in React Hook Form and Zod. The active workflow stage is derived from the API resource instead of being duplicated in a browser-only state machine.
+- `app` owns bootstrap, providers, routing, theme, and global styles;
+- `pages/workspace` composes the workflow route and lazy stage boundaries;
+- `entities/workspace` owns the workspace model, response validation, queries, and cache keys;
+- `features` is organized by the five user-visible stages, with each feature owning its commands, components, and tests;
+- `shared/api` owns the generated HTTP contract, client, and request infrastructure, while `shared/ui` contains the small reusable UVTS presentation layer;
+- `mocks` contains development-only workspace examples and is loaded conditionally so demo report data does not enter the normal application entry bundle.
+
+Dependencies flow from the app and page layers toward features, entities, and shared infrastructure. Direct file imports are preferred over barrel files so Vite can analyze and split feature code. Astryx remains the component and interaction source of truth.
+
+Server state and mutations belong in TanStack Query. Form state belongs in React Hook Form and Zod. The active workflow stage is derived from the API resource instead of being duplicated in a browser-only state machine. Workflow stages are lazy-loaded through static import paths, with accessible stages preloaded on intent; the PDF renderer remains a nested, conditional bundle.
 
 ### API and worker
 
@@ -31,7 +40,7 @@ Document storage, PDF extraction, model access, job publication, and repositorie
 
 ## Contract ownership
 
-FastAPI generates `contracts/openapi.json`. The web application generates its TypeScript definitions from that committed snapshot. Continuous integration regenerates both outputs and fails when a change was not committed.
+FastAPI generates `contracts/openapi.json`. The web application generates its TypeScript definitions from that committed snapshot under `apps/web/src/shared/api/generated`. Continuous integration regenerates both outputs and fails when a change was not committed.
 
 Public errors use a stable machine code, a plain-language message, a retryable flag, and optional field errors. Raw exceptions, secrets, and internal model details must not cross the contract.
 

@@ -1,4 +1,4 @@
-import { workflowStages, type WorkflowStage } from '../model/workspace';
+import { workflowStages, type WorkflowStage } from '../../entities/workspace/model';
 
 const labels: Record<WorkflowStage, string> = {
   configuration: 'Product setup',
@@ -12,12 +12,14 @@ interface WorkflowOverviewProps {
   currentStage: WorkflowStage;
   viewedStage: WorkflowStage;
   onStageChange: (stage: WorkflowStage) => void;
+  onStagePreload: (stage: WorkflowStage) => void;
 }
 
 export function WorkflowOverview({
   currentStage,
   viewedStage,
   onStageChange,
+  onStagePreload,
 }: WorkflowOverviewProps) {
   const currentIndex = workflowStages.indexOf(currentStage);
 
@@ -35,6 +37,8 @@ export function WorkflowOverview({
               aria-current={stage === viewedStage ? 'step' : undefined}
               disabled={index > currentIndex}
               onClick={() => onStageChange(stage)}
+              onFocus={() => onStagePreload(stage)}
+              onPointerEnter={() => onStagePreload(stage)}
             >
               <span className="workflow-step-label">
                 <span className="workflow-step-marker" aria-hidden="true">

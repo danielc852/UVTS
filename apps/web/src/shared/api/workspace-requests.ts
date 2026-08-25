@@ -1,6 +1,6 @@
-import type { TestWorkspace } from '../shared/model/workspace';
+import type { TestWorkspace } from '../../entities/workspace/model';
 import { apiUrl } from './client';
-import { bootstrapSession, parseTestWorkspace } from './workspaces';
+import { bootstrapSession, parseTestWorkspace } from '../../entities/workspace/api';
 
 export interface ApiErrorDetail {
   code?: string;

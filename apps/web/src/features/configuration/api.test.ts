@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from './fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 
-vi.mock('./workspaces', () => ({
+vi.mock('../../entities/workspace/api', () => ({
   bootstrapSession: vi.fn().mockResolvedValue(undefined),
   parseTestWorkspace: (value: unknown) => value,
 }));
@@ -17,7 +17,7 @@ describe('question configuration requests', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const { saveProductConfiguration } = await import('./question-configuration');
+    const { saveProductConfiguration } = await import('./api');
 
     await saveProductConfiguration({
       productImage: new File(['image'], 'speaker.png', { type: 'image/png' }),
@@ -41,7 +41,7 @@ describe('question configuration requests', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const { saveProductConfiguration } = await import('./question-configuration');
+    const { saveProductConfiguration } = await import('./api');
     const image = new File(['image'], 'speaker.png', { type: 'image/png' });
 
     await saveProductConfiguration({
@@ -84,7 +84,7 @@ describe('question configuration requests', () => {
         ),
       ),
     );
-    const { saveProductConfiguration } = await import('./question-configuration');
+    const { saveProductConfiguration } = await import('./api');
 
     await expect(
       saveProductConfiguration({
@@ -111,7 +111,7 @@ describe('question configuration requests', () => {
         }),
       ),
     );
-    const { saveProductConfiguration } = await import('./question-configuration');
+    const { saveProductConfiguration } = await import('./api');
 
     await expect(
       saveProductConfiguration({

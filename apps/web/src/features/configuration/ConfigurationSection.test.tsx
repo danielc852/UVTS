@@ -2,19 +2,19 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from '../../api/fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 import { renderApp } from '../../test/render-app';
 
 const configurationApi = vi.hoisted(() => ({ save: vi.fn(), generate: vi.fn() }));
 
-vi.mock('../../api/question-configuration', () => ({
+vi.mock('./api', () => ({
   saveProductConfiguration: configurationApi.save,
   QuestionConfigurationRequestError: class QuestionConfigurationRequestError extends Error {
     code = 'question_configuration_request_failed';
     fieldErrors = {};
   },
 }));
-vi.mock('../../api/questions', () => ({
+vi.mock('../questions/api', () => ({
   generateQuestions: configurationApi.generate,
   QuestionTransitionError: class QuestionTransitionError extends Error {},
 }));
@@ -86,7 +86,7 @@ describe('ConfigurationSection', () => {
     const saved = getWorkspaceFixture('configuration-saved');
     expect(saved).toBeDefined();
     configurationApi.save.mockResolvedValue(saved);
-    const { QuestionTransitionError } = await import('../../api/questions');
+    const { QuestionTransitionError } = await import('../questions/api');
     configurationApi.generate.mockRejectedValue(
       new QuestionTransitionError(
         'An OpenRouter API key is required to generate questions. Add OPENROUTER_API_KEY to the server environment and restart UVTS.',

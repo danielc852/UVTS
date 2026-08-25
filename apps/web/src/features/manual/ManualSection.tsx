@@ -3,7 +3,7 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { FileInput } from '@astryxdesign/core/FileInput';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useState } from 'react';
 
 import {
@@ -11,9 +11,9 @@ import {
   DocumentRequestError,
   manualContentUrl,
   uploadManual,
-} from '../../api/documents';
-import { queryKeys } from '../../api/query-keys';
-import type { TestWorkspace } from '../../shared/model/workspace';
+} from './api';
+import { storeWorkspace } from '../../entities/workspace/query';
+import type { TestWorkspace } from '../../entities/workspace/model';
 import { StageSection } from '../../shared/ui/StageSection';
 
 const PdfViewer = lazy(() =>
@@ -31,16 +31,48 @@ function isPdf(file: File): boolean {
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 }
 
+function uploadProgressLabel(workspace: TestWorkspace): string {
+  const upload = workspace.manualUpload;
+  if (!upload) return 'Uploading manual';
+  if (upload.status === 'checking') return `Checking ${upload.filename}`;
+  return `Preparing ${upload.filename}`;
+}
+
 export function ManualSection({ workspace, state = 'active' }: ManualSectionProps) {
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>();
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [fileError, setFileError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [confirmation, setConfirmation] = useState<Confirmation>();
   const manual = workspace.manual;
   const testId = workspace.id;
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadManual({ file, testId, onProgress: setUploadProgress }),
+    onSuccess: (updated) => storeWorkspace(queryClient, updated),
+    onError: (error: unknown) => {
+      setActionError(
+        error instanceof DocumentRequestError
+          ? error.message
+          : 'The manual could not be uploaded. Try again.',
+      );
+    },
+  });
+  const removeMutation = useMutation({
+    mutationFn: () => deleteManual(testId),
+    onSuccess: (updated) => {
+      storeWorkspace(queryClient, updated);
+      setConfirmation(undefined);
+    },
+    onError: (error: unknown) => {
+      setActionError(
+        error instanceof DocumentRequestError
+          ? error.message
+          : 'The manual could not be removed. Try again.',
+      );
+    },
+  });
+  const isSubmitting = uploadMutation.isPending || removeMutation.isPending;
   const isBusy = isSubmitting || Boolean(workspace.manualUpload);
 
   if (state === 'locked') {
@@ -54,31 +86,19 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
     );
   }
 
-  const storeWorkspace = (updated: TestWorkspace) => {
-    queryClient.setQueryData(queryKeys.test(updated.id), updated);
-  };
-
   const submitFile = async (file: File): Promise<boolean> => {
-    setIsSubmitting(true);
     setActionError(undefined);
     setUploadProgress(0);
     try {
-      const updated = await uploadManual({ file, testId, onProgress: setUploadProgress });
-      storeWorkspace(updated);
+      const updated = await uploadMutation.mutateAsync(file);
       if (updated.error?.stage === 'upload') {
         return false;
       }
       setSelectedFile(null);
       return true;
-    } catch (error) {
-      setActionError(
-        error instanceof DocumentRequestError
-          ? error.message
-          : 'The manual could not be uploaded. Try again.',
-      );
+    } catch {
       return false;
     } finally {
-      setIsSubmitting(false);
       setUploadProgress(undefined);
     }
   };
@@ -101,21 +121,8 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
   };
 
   const remove = async () => {
-    setIsSubmitting(true);
     setActionError(undefined);
-    try {
-      const updated = await deleteManual(testId);
-      storeWorkspace(updated);
-      setConfirmation(undefined);
-    } catch (error) {
-      setActionError(
-        error instanceof DocumentRequestError
-          ? error.message
-          : 'The manual could not be removed. Try again.',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+    await removeMutation.mutateAsync().catch(() => undefined);
   };
 
   const confirm = async () => {
@@ -126,11 +133,7 @@ export function ManualSection({ workspace, state = 'active' }: ManualSectionProp
     }
   };
 
-  const progressLabel = workspace.manualUpload
-    ? workspace.manualUpload.status === 'checking'
-      ? `Checking ${workspace.manualUpload.filename}`
-      : `Preparing ${workspace.manualUpload.filename}`
-    : 'Uploading manual';
+  const progressLabel = uploadProgressLabel(workspace);
 
   return (
     <StageSection

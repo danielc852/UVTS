@@ -1,4 +1,4 @@
-import type { components } from '../../api/generated/schema';
+import type { components } from '../../shared/api/generated/schema';
 
 export type WorkflowStage = components['schemas']['WorkflowStage'];
 export type TestStatus = components['schemas']['TestStatus'];

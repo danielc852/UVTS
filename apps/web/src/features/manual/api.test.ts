@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from './fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 
-vi.mock('./workspaces', () => ({
+vi.mock('../../entities/workspace/api', () => ({
   bootstrapSession: vi.fn().mockResolvedValue(undefined),
   parseTestWorkspace: (value: unknown) => value,
 }));
@@ -47,7 +47,7 @@ describe('document requests', () => {
     TestXMLHttpRequest.responseStatus = 202;
     TestXMLHttpRequest.responseBody = JSON.stringify(workspace);
     vi.stubGlobal('XMLHttpRequest', TestXMLHttpRequest);
-    const { uploadManual } = await import('./documents');
+    const { uploadManual } = await import('./api');
     const progress = vi.fn();
 
     const result = await uploadManual({
@@ -73,7 +73,7 @@ describe('document requests', () => {
       },
     });
     vi.stubGlobal('XMLHttpRequest', TestXMLHttpRequest);
-    const { uploadManual } = await import('./documents');
+    const { uploadManual } = await import('./api');
 
     const request = uploadManual({
       file: new File(['%PDF-test'], 'locked.pdf', { type: 'application/pdf' }),

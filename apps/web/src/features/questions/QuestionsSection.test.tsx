@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from '../../api/fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 import { renderApp } from '../../test/render-app';
 
 const questionApi = vi.hoisted(() => ({
@@ -11,7 +11,7 @@ const questionApi = vi.hoisted(() => ({
   startOver: vi.fn(),
 }));
 
-vi.mock('../../api/questions', () => ({
+vi.mock('./api', () => ({
   confirmQuestions: questionApi.confirm,
   generateQuestions: questionApi.generate,
   startOver: questionApi.startOver,

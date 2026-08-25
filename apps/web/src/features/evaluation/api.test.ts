@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from './fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 
-vi.mock('./workspaces', () => ({
+vi.mock('../../entities/workspace/api', () => ({
   bootstrapSession: vi.fn().mockResolvedValue(undefined),
   parseTestWorkspace: (value: unknown) => value,
 }));
@@ -12,7 +12,6 @@ describe('evaluation requests', () => {
     ['startEvaluation', ['test-1'], '/api/v1/tests/test-1/evaluation'],
     ['retryFailedQuestions', ['test-1'], '/api/v1/tests/test-1/evaluation/retry-failed'],
     ['retryQuestion', ['test-1', 'question-1'], '/api/v1/tests/test-1/evaluation/question-1/retry'],
-    ['retryReport', ['test-1'], '/api/v1/tests/test-1/report/retry'],
   ] as const)('posts %s to the persisted test lineage', async (method, arguments_, path) => {
     const workspace = getWorkspaceFixture('evaluating');
     const fetchMock = vi.fn().mockResolvedValue(
@@ -22,7 +21,7 @@ describe('evaluation requests', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const api = await import('./evaluation');
+    const api = await import('./api');
 
     const operation = api[method] as (...arguments__: string[]) => Promise<unknown>;
     await operation(...arguments_);
@@ -50,7 +49,7 @@ describe('evaluation requests', () => {
         ),
       ),
     );
-    const { startEvaluation } = await import('./evaluation');
+    const { startEvaluation } = await import('./api');
 
     await expect(startEvaluation('test-1')).rejects.toMatchObject({
       code: 'evaluation_not_ready',

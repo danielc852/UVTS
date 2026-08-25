@@ -1,7 +1,7 @@
-import type { TestWorkspace } from '../shared/model/workspace';
-import { apiClient, apiUrl } from './client';
-import { bootstrapSession, parseTestWorkspace } from './workspaces';
-import type { ApiErrorEnvelope } from './workspace-requests';
+import type { TestWorkspace } from '../../entities/workspace/model';
+import { bootstrapSession, parseTestWorkspace } from '../../entities/workspace/api';
+import { apiClient, apiUrl } from '../../shared/api/client';
+import type { ApiErrorEnvelope } from '../../shared/api/workspace-requests';
 
 interface UploadManualOptions {
   file: File;

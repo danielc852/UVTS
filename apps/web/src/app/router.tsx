@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
-import { WorkspacePage } from '../routes/workspace/WorkspacePage';
+import { WorkspacePage } from '../pages/workspace/WorkspacePage';
 
 export function AppRouter() {
   return (

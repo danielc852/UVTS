@@ -2,7 +2,7 @@ import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import {
@@ -10,9 +10,9 @@ import {
   generateQuestions,
   QuestionTransitionError,
   startOver,
-} from '../../api/questions';
-import { queryKeys } from '../../api/query-keys';
-import type { TestWorkspace } from '../../shared/model/workspace';
+} from './api';
+import { storeWorkspace } from '../../entities/workspace/query';
+import type { TestWorkspace } from '../../entities/workspace/model';
 import { StageSection } from '../../shared/ui/StageSection';
 
 interface QuestionsSectionProps {
@@ -21,17 +21,42 @@ interface QuestionsSectionProps {
 }
 
 type PendingAction = 'regenerate' | 'start-over';
+type QuestionAction = 'confirm' | PendingAction;
+
+function runQuestionAction(testId: string, action: QuestionAction): Promise<TestWorkspace> {
+  switch (action) {
+    case 'confirm':
+      return confirmQuestions(testId);
+    case 'regenerate':
+      return generateQuestions(testId);
+    case 'start-over':
+      return startOver(testId);
+  }
+}
+
+function questionActionError(error: Error | null): string | undefined {
+  if (!error) return undefined;
+  if (error instanceof QuestionTransitionError) return error.message;
+  return 'The question action could not be completed. Try again.';
+}
 
 export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<PendingAction>();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [actionError, setActionError] = useState<string>();
   const questionSet = workspace.questionSet;
   const questions = questionSet?.items ?? [];
   const isConfirmed = questionSet?.status === 'confirmed';
   const isLegacy = questionSet?.source === 'legacy_manual_unknown';
   const isStale = questionSet?.configurationVersion !== workspace.configuration.version;
+  const actionMutation = useMutation({
+    mutationFn: (action: QuestionAction) => runQuestionAction(workspace.id, action),
+    onSuccess: (updated) => {
+      storeWorkspace(queryClient, updated);
+      setPendingAction(undefined);
+    },
+  });
+  const actionError = questionActionError(actionMutation.error);
+  const isSubmitting = actionMutation.isPending;
 
   if (state === 'locked') {
     return (
@@ -43,33 +68,6 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
       />
     );
   }
-
-  const store = (updated: TestWorkspace) => {
-    queryClient.setQueryData(queryKeys.test(updated.id), updated);
-  };
-
-  const run = async (action: 'confirm' | PendingAction) => {
-    setIsSubmitting(true);
-    setActionError(undefined);
-    try {
-      const updated =
-        action === 'confirm'
-          ? await confirmQuestions(workspace.id)
-          : action === 'regenerate'
-            ? await generateQuestions(workspace.id)
-            : await startOver(workspace.id);
-      store(updated);
-      setPendingAction(undefined);
-    } catch (error) {
-      setActionError(
-        error instanceof QuestionTransitionError
-          ? error.message
-          : 'The question action could not be completed. Try again.',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <StageSection
@@ -124,7 +122,10 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
             label="Start over"
             variant="secondary"
             isDisabled={isSubmitting}
-            onClick={() => setPendingAction('start-over')}
+            onClick={() => {
+              actionMutation.reset();
+              setPendingAction('start-over');
+            }}
           />
         ) : (
           <>
@@ -132,14 +133,17 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
               label={isLegacy ? 'Generate product-only questions' : 'Generate again'}
               variant="secondary"
               isDisabled={state === 'working' || isSubmitting}
-              onClick={() => setPendingAction('regenerate')}
+              onClick={() => {
+                actionMutation.reset();
+                setPendingAction('regenerate');
+              }}
             />
             <Button
               label="Confirm questions"
               variant="primary"
               isDisabled={state === 'working' || isSubmitting || isLegacy || isStale || questions.length === 0}
               isLoading={isSubmitting && !pendingAction}
-              onClick={() => void run('confirm')}
+              onClick={() => actionMutation.mutate('confirm')}
             />
           </>
         )}
@@ -148,7 +152,10 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
       <AlertDialog
         isOpen={Boolean(pendingAction)}
         onOpenChange={(open) => {
-          if (!open && !isSubmitting) setPendingAction(undefined);
+          if (!open && !isSubmitting) {
+            actionMutation.reset();
+            setPendingAction(undefined);
+          }
         }}
         title={pendingAction === 'start-over' ? 'Start this test over?' : 'Generate a different draft?'}
         description={
@@ -160,7 +167,7 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
         cancelLabel="Cancel"
         isActionLoading={isSubmitting}
         onAction={() => {
-          if (pendingAction) void run(pendingAction);
+          if (pendingAction) actionMutation.mutate(pendingAction);
         }}
       />
     </StageSection>

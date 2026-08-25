@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { TestWorkspace } from '../shared/model/workspace';
+import type { TestWorkspace } from './model';
 
 const questionSchema = z.object({ id: z.string(), text: z.string() });
 const sourceSchema = z.object({ questionSetId: z.string(), manualId: z.string() });

@@ -10,6 +10,8 @@ import {
 } from 'pdfjs-dist';
 import { useEffect, useRef, useState } from 'react';
 
+import { releasePdfPageSurface } from './pdf-page-surface';
+
 GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
@@ -42,7 +44,7 @@ function PdfPage({ document, pageNumber, width }: PdfPageProps) {
     }
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) setIsNearViewport(true);
+        setIsNearViewport(entry.isIntersecting);
       },
       { root: root.closest<HTMLElement>('.pdf-viewer'), rootMargin: '800px 0px' },
     );
@@ -69,7 +71,7 @@ function PdfPage({ document, pageNumber, width }: PdfPageProps) {
   useEffect(() => {
     const canvas = canvasRef.current;
     const textContainer = textRef.current;
-    if (!page || !canvas || !textContainer || width <= 0) return undefined;
+    if (!isNearViewport || !page || !canvas || !textContainer || width <= 0) return undefined;
 
     const unscaled = page.getViewport({ scale: 1 });
     const viewport = page.getViewport({ scale: width / unscaled.width });
@@ -81,6 +83,11 @@ function PdfPage({ document, pageNumber, width }: PdfPageProps) {
     textContainer.replaceChildren();
     textContainer.style.width = `${Math.floor(viewport.width)}px`;
     textContainer.style.height = `${Math.floor(viewport.height)}px`;
+    const pageSurface = canvas.parentElement;
+    if (pageSurface) {
+      pageSurface.style.width = `${Math.floor(viewport.width)}px`;
+      pageSurface.style.height = `${Math.floor(viewport.height)}px`;
+    }
     rootRef.current?.style.setProperty('--scale-factor', String(viewport.scale));
     setPageError(false);
 
@@ -108,8 +115,9 @@ function PdfPage({ document, pageNumber, width }: PdfPageProps) {
       active = false;
       renderTask.cancel();
       textLayer.cancel();
+      releasePdfPageSurface(canvas, textContainer);
     };
-  }, [page, width]);
+  }, [isNearViewport, page, width]);
 
   return (
     <article

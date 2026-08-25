@@ -2,7 +2,7 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Section } from '@astryxdesign/core/Section';
 import type { ReactNode } from 'react';
 
-import { workflowStages, type WorkspaceError } from '../model/workspace';
+import { workflowStages, type WorkspaceError } from '../../entities/workspace/model';
 
 type StagePresentation = 'locked' | 'active' | 'working' | 'complete';
 

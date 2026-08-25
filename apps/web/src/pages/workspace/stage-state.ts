@@ -1,4 +1,4 @@
-import { workflowStages, type TestWorkspace, type WorkflowStage } from '../../shared/model/workspace';
+import { workflowStages, type TestWorkspace, type WorkflowStage } from '../../entities/workspace/model';
 
 export function getStageState(
   workspace: TestWorkspace,

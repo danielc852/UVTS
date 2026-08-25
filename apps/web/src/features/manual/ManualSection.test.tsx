@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getWorkspaceFixture } from '../../api/fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 import { renderApp } from '../../test/render-app';
 
 const documentApi = vi.hoisted(() => ({
@@ -10,7 +10,7 @@ const documentApi = vi.hoisted(() => ({
   uploadManual: vi.fn(),
 }));
 
-vi.mock('../../api/documents', () => ({
+vi.mock('./api', () => ({
   deleteManual: documentApi.deleteManual,
   DocumentRequestError: class DocumentRequestError extends Error {},
   manualContentUrl: (testId: string) => `/api/v1/tests/${testId}/manual/content`,

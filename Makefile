@@ -42,6 +42,6 @@ contract:
 	cd apps/web && pnpm generate:api
 
 contract-check: contract
-	git diff --exit-code -- contracts/openapi.json apps/web/src/api/generated
+	git diff --exit-code -- contracts/openapi.json apps/web/src/shared/api/generated
 
 check: lint typecheck test build theme-check contract-check

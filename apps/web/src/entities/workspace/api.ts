@@ -1,9 +1,7 @@
-import { getWorkspaceFixture } from './fixtures/workspaces';
-import type { TestWorkspace } from '../shared/model/workspace';
-import { apiClient } from './client';
-import { workspaceStateSchema } from './workspace-schema';
+import type { TestWorkspace } from './model';
+import { apiClient } from '../../shared/api/client';
+import { workspaceStateSchema } from './schema';
 
-const mocksEnabled = import.meta.env.VITE_ENABLE_MOCKS !== 'false';
 let sessionBootstrap: Promise<void> | undefined;
 
 export function bootstrapSession(): Promise<void> {
@@ -20,11 +18,6 @@ export function bootstrapSession(): Promise<void> {
 }
 
 export async function getTestWorkspace(testId: string): Promise<TestWorkspace> {
-  if (testId === 'clean' || mocksEnabled) {
-    const fixture = getWorkspaceFixture(testId);
-    if (fixture) return fixture;
-  }
-
   await bootstrapSession();
   const { data, error, response } = await apiClient.GET('/api/v1/tests/{test_id}', {
     params: { path: { test_id: testId } },

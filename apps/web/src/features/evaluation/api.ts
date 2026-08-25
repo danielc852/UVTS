@@ -1,5 +1,5 @@
-import type { TestWorkspace } from '../shared/model/workspace';
-import { requestWorkspace, type ApiErrorDetail } from './workspace-requests';
+import type { TestWorkspace } from '../../entities/workspace/model';
+import { requestWorkspace, type ApiErrorDetail } from '../../shared/api/workspace-requests';
 
 export class EvaluationRequestError extends Error {
   constructor(
@@ -34,8 +34,4 @@ export function retryFailedQuestions(testId: string): Promise<TestWorkspace> {
 
 export function retryQuestion(testId: string, questionId: string): Promise<TestWorkspace> {
   return post(`/api/v1/tests/${testId}/evaluation/${questionId}/retry`);
-}
-
-export function retryReport(testId: string): Promise<TestWorkspace> {
-  return post(`/api/v1/tests/${testId}/report/retry`);
 }

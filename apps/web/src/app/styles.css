@@ -190,7 +190,12 @@ p, li { line-height: 1.55; }
 }
 .pdf-viewer-loading,
 .pdf-viewer-error { padding: 24px; }
-.pdf-page { margin: 0 auto 24px; width: fit-content; }
+.pdf-page {
+  contain-intrinsic-size: auto 900px;
+  content-visibility: auto;
+  margin: 0 auto 24px;
+  width: fit-content;
+}
 .pdf-page:last-child { margin-block-end: 0; }
 .pdf-page-label {
   color: var(--color-text-secondary, #525252);

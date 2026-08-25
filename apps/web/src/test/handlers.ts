@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 
-import { getWorkspaceFixture } from '../api/fixtures/workspaces';
+import { getWorkspaceFixture } from '../mocks/workspaces';
 
 export const handlers = [
   http.post('*/api/v1/session', () =>

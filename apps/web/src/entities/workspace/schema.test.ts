@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { getWorkspaceFixture } from './fixtures/workspaces';
-import { parseTestWorkspace } from './workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
+import { parseTestWorkspace } from './api';
 
 describe('workspace response contract', () => {
   it('derives the browser question list from the persisted question set', () => {

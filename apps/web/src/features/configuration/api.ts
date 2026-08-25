@@ -1,5 +1,5 @@
-import type { TestWorkspace } from '../shared/model/workspace';
-import { requestWorkspace, type ApiErrorDetail } from './workspace-requests';
+import type { TestWorkspace } from '../../entities/workspace/model';
+import { requestWorkspace, type ApiErrorDetail } from '../../shared/api/workspace-requests';
 
 interface SaveProductConfigurationOptions {
   testId?: string;

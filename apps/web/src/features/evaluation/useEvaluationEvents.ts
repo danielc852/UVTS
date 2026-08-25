@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { apiUrl } from '../../api/client';
-import { queryKeys } from '../../api/query-keys';
+import { queryKeys } from '../../entities/workspace/query';
+import { apiUrl } from '../../shared/api/client';
 
 export function useTestEvents(testId: string, enabled: boolean) {
   const queryClient = useQueryClient();

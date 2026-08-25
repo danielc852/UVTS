@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "generate:api": "openapi-typescript ../../contracts/openapi.json -o src/api/generated/schema.ts"
+    "generate:api": "openapi-typescript ../../contracts/openapi.json -o src/shared/api/generated/schema.ts"
   },
   "dependencies": {
     "@astryxdesign/core": "^0.4.6",

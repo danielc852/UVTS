@@ -1,10 +1,10 @@
 import {
-  defaultConfiguration,
   type Question,
   type QuestionSet,
   type Report,
   type TestWorkspace,
-} from '../../shared/model/workspace';
+} from '../entities/workspace/model';
+import { createCleanWorkspace } from '../entities/workspace/clean';
 
 const manual = {
   id: 'manual-1',
@@ -88,15 +88,7 @@ const completeReport: Report = {
   followUpQuestions: ['Can I resume setup after the device reconnects?'],
 };
 
-const baseWorkspace: TestWorkspace = {
-  id: 'clean',
-  schemaVersion: 2,
-  status: 'draft',
-  currentStage: 'configuration',
-  configuration: defaultConfiguration,
-  questions: [],
-  evaluation: [],
-};
+const baseWorkspace = createCleanWorkspace();
 
 export const workspaceFixtures = {
   clean: baseWorkspace,

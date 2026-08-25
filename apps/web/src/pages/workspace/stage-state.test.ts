@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getWorkspaceFixture } from '../../api/fixtures/workspaces';
+import { getWorkspaceFixture } from '../../mocks/workspaces';
 import { getStageState } from './stage-state';
 
 describe('getStageState', () => {

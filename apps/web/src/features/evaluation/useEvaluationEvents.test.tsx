@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { queryKeys } from '../../api/query-keys';
+import { queryKeys } from '../../entities/workspace/query';
 import { useTestEvents } from './useEvaluationEvents';
 
 class TestEventSource extends EventTarget {

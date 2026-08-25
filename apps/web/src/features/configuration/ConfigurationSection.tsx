@@ -5,66 +5,30 @@ import { FormLayout } from '@astryxdesign/core/FormLayout';
 import { NumberInput } from '@astryxdesign/core/NumberInput';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { z } from 'zod';
 
+import type { TestConfiguration, WorkspaceError } from '../../entities/workspace/model';
+import { storeWorkspace } from '../../entities/workspace/query';
+import { StageSection } from '../../shared/ui/StageSection';
+import { generateQuestions, QuestionTransitionError } from '../questions/api';
 import {
   QuestionConfigurationRequestError,
   saveProductConfiguration,
-} from '../../api/question-configuration';
-import { generateQuestions, QuestionTransitionError } from '../../api/questions';
-import { queryKeys } from '../../api/query-keys';
-import type { TestConfiguration, WorkspaceError } from '../../shared/model/workspace';
-import { StageSection } from '../../shared/ui/StageSection';
+} from './api';
+import {
+  configurationSchema,
+  MAX_PRODUCT_IMAGE_BYTES,
+  type ConfigurationForm,
+} from './schema';
 
-const MAX_PRODUCT_IMAGE_BYTES = 10 * 1024 * 1024;
-
-function configurationSchema(hasSavedImage: boolean) {
-  return z
-    .object({
-      productImage: z.instanceof(File).nullable(),
-      productDescription: z
-        .string()
-        .trim()
-        .min(1, 'Describe the product before saving the question setup.'),
-      totalQuestions: z.number().int().min(1).max(15),
-    })
-    .superRefine((value, context) => {
-      if (!value.productImage && !hasSavedImage) {
-        context.addIssue({
-          code: 'custom',
-          path: ['productImage'],
-          message: 'Add a product image before saving the question setup.',
-        });
-      }
-      if (value.productImage && !value.productImage.type.startsWith('image/')) {
-        context.addIssue({
-          code: 'custom',
-          path: ['productImage'],
-          message: 'Upload an image file.',
-        });
-      }
-      if (value.productImage && value.productImage.size === 0) {
-        context.addIssue({
-          code: 'custom',
-          path: ['productImage'],
-          message: 'The selected image is empty. Choose another image.',
-        });
-      }
-      if (value.productImage && value.productImage.size > MAX_PRODUCT_IMAGE_BYTES) {
-        context.addIssue({
-          code: 'custom',
-          path: ['productImage'],
-          message: 'Upload an image smaller than 10 MB.',
-        });
-      }
-    });
-}
-
-type ConfigurationForm = z.infer<ReturnType<typeof configurationSchema>>;
+const configurationFieldMap = {
+  productImage: 'productImage',
+  productDescription: 'productDescription',
+  totalQuestions: 'totalQuestions',
+} as const;
 
 interface ConfigurationSectionProps {
   testId?: string;
@@ -96,6 +60,38 @@ export function ConfigurationSection({
       productImage: null,
       productDescription: configuration.productDescription,
       totalQuestions: configuration.totalQuestions,
+    },
+  });
+  const saveMutation = useMutation({
+    mutationFn: async (values: ConfigurationForm) => {
+      const saved = await saveProductConfiguration({
+        testId,
+        productImage: values.productImage ?? undefined,
+        productDescription: values.productDescription,
+        totalQuestions: values.totalQuestions,
+      });
+      storeWorkspace(queryClient, saved);
+      if (!testId) navigate(`/tests/${saved.id}`, { replace: true });
+      form.reset({
+        productImage: null,
+        productDescription: saved.configuration.productDescription,
+        totalQuestions: saved.configuration.totalQuestions,
+      });
+      const generating = await generateQuestions(saved.id);
+      storeWorkspace(queryClient, generating);
+    },
+    onError: (caught: unknown) => {
+      if (caught instanceof QuestionConfigurationRequestError) {
+        for (const [field, messages] of Object.entries(caught.fieldErrors ?? {})) {
+          const formField = configurationFieldMap[field as keyof typeof configurationFieldMap];
+          if (formField && messages[0]) form.setError(formField, { message: messages[0] });
+        }
+        setRequestError(caught.message);
+      } else if (caught instanceof QuestionTransitionError) {
+        setRequestError(caught.message);
+      } else {
+        setRequestError('The question setup could not be saved. Try again.');
+      }
     },
   });
 
@@ -139,40 +135,7 @@ export function ConfigurationSection({
 
   const submit = async (values: ConfigurationForm) => {
     setRequestError(undefined);
-    try {
-      const saved = await saveProductConfiguration({
-        testId,
-        productImage: values.productImage ?? undefined,
-        productDescription: values.productDescription,
-        totalQuestions: values.totalQuestions,
-      });
-      queryClient.setQueryData(queryKeys.test(saved.id), saved);
-      if (!testId) navigate(`/tests/${saved.id}`, { replace: true });
-      form.reset({
-        productImage: null,
-        productDescription: saved.configuration.productDescription,
-        totalQuestions: saved.configuration.totalQuestions,
-      });
-      const generating = await generateQuestions(saved.id);
-      queryClient.setQueryData(queryKeys.test(saved.id), generating);
-    } catch (caught) {
-      if (caught instanceof QuestionConfigurationRequestError) {
-        const fieldMap = {
-          productImage: 'productImage',
-          productDescription: 'productDescription',
-          totalQuestions: 'totalQuestions',
-        } as const;
-        for (const [field, messages] of Object.entries(caught.fieldErrors ?? {})) {
-          const formField = fieldMap[field as keyof typeof fieldMap];
-          if (formField && messages[0]) form.setError(formField, { message: messages[0] });
-        }
-        setRequestError(caught.message);
-      } else if (caught instanceof QuestionTransitionError) {
-        setRequestError(caught.message);
-      } else {
-        setRequestError('The question setup could not be saved. Try again.');
-      }
-    }
+    await saveMutation.mutateAsync(values).catch(() => undefined);
   };
 
   return (

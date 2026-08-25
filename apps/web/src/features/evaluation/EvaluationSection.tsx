@@ -2,17 +2,22 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
-import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
 import {
   EvaluationRequestError,
   retryFailedQuestions,
   retryQuestion,
   startEvaluation,
-} from '../../api/evaluation';
-import { queryKeys } from '../../api/query-keys';
-import type { EvaluationItem, Question } from '../../shared/model/workspace';
+} from './api';
+import { storeWorkspace } from '../../entities/workspace/query';
+import type {
+  EvaluationItem,
+  EvaluationStatus,
+  Question,
+  TestWorkspace,
+} from '../../entities/workspace/model';
 import { StageSection } from '../../shared/ui/StageSection';
 
 interface EvaluationSectionProps {
@@ -29,10 +34,31 @@ const statusLabels = {
   failed: 'Failed',
 };
 
+const statusVariants: Record<EvaluationStatus, 'error' | 'info' | 'neutral'> = {
+  waiting: 'neutral',
+  checking: 'info',
+  complete: 'neutral',
+  failed: 'error',
+};
+
+function evaluationActionError(error: Error | null): string | undefined {
+  if (!error) return undefined;
+  if (error instanceof EvaluationRequestError) return error.message;
+  return 'The evaluation request could not be completed. Try again.';
+}
+
 export function EvaluationSection({ state, questions, evaluation, testId }: EvaluationSectionProps) {
   const queryClient = useQueryClient();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [requestError, setRequestError] = useState<string>();
+  const evaluationByQuestion = useMemo(
+    () => new Map(evaluation.map((item) => [item.questionId, item])),
+    [evaluation],
+  );
+  const actionMutation = useMutation({
+    mutationFn: (action: () => Promise<TestWorkspace>) => action(),
+    onSuccess: (updated) => storeWorkspace(queryClient, updated),
+  });
+  const requestError = evaluationActionError(actionMutation.error);
+  const isSubmitting = actionMutation.isPending;
   if (state === 'locked') {
     return (
       <StageSection
@@ -49,23 +75,6 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
   ).length;
   const failed = evaluation.filter((item) => item.status === 'failed').length;
   const hasStarted = evaluation.length > 0;
-
-  const run = async (action: () => Promise<import('../../shared/model/workspace').TestWorkspace>) => {
-    setIsSubmitting(true);
-    setRequestError(undefined);
-    try {
-      const updated = await action();
-      queryClient.setQueryData(queryKeys.test(updated.id), updated);
-    } catch (error) {
-      setRequestError(
-        error instanceof EvaluationRequestError
-          ? error.message
-          : 'The evaluation request could not be completed. Try again.',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <StageSection
@@ -89,7 +98,7 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
             label="Evaluate confirmed questions"
             variant="primary"
             isLoading={isSubmitting}
-            onClick={() => void run(() => startEvaluation(testId))}
+            onClick={() => actionMutation.mutate(() => startEvaluation(testId))}
           />
         </>
       ) : null}
@@ -107,20 +116,14 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
           </p>
           <ol className="evaluation-list">
             {questions.map((question, index) => {
-              const item = evaluation.find((candidate) => candidate.questionId === question.id);
+              const item = evaluationByQuestion.get(question.id);
               const status = item?.status ?? 'waiting';
               return (
                 <li key={question.id}>
                   <span>{question.text}</span>
                   <Badge
                     label={statusLabels[status]}
-                    variant={
-                      status === 'failed'
-                        ? 'error'
-                        : status === 'checking'
-                          ? 'info'
-                          : 'neutral'
-                    }
+                    variant={statusVariants[status]}
                   />
                   {status === 'failed' ? (
                     <Button
@@ -128,7 +131,9 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
                       variant="ghost"
                       size="sm"
                       isDisabled={isSubmitting || state === 'working'}
-                      onClick={() => void run(() => retryQuestion(testId, question.id))}
+                      onClick={() =>
+                        actionMutation.mutate(() => retryQuestion(testId, question.id))
+                      }
                     />
                   ) : null}
                 </li>
@@ -141,7 +146,7 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
               variant="secondary"
               isLoading={isSubmitting}
               isDisabled={state === 'working'}
-              onClick={() => void run(() => retryFailedQuestions(testId))}
+              onClick={() => actionMutation.mutate(() => retryFailedQuestions(testId))}
             />
           ) : null}
         </>
