@@ -23,6 +23,14 @@ remain safe. The one-minute goal is not yet marked solved because it still needs
 real Docker-backed measurement across request preparation, model calls, retries,
 result processing, and delivery to the browser.
 
+**Low-priority follow-up:** `EVALUATION_MAX_CONCURRENCY` currently limits each
+evaluation job rather than all evaluation jobs combined. If several users start
+evaluations at the same time, each job can run up to its own configured limit, so the
+total number of OpenRouter requests can be higher. This is not urgent for the current
+small-scale use case. Before UVTS is used by many simultaneous users or runs several
+worker instances, add a shared provider-wide concurrency limit, such as a Redis-backed
+semaphore or a dedicated evaluation worker queue with controlled capacity.
+
 ## 3. UI clarity and structure — solved
 
 The interface had repeated step numbers and secondary explanations that competed
