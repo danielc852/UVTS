@@ -36,7 +36,7 @@ describe('QuestionsSection', () => {
     await user.click(await screen.findByRole('button', { name: 'Confirm questions' }));
 
     expect(questionApi.confirm).toHaveBeenCalledWith('questions-ready');
-    expect(await screen.findByRole('heading', { name: '3. Upload manual' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Upload manual' })).toBeInTheDocument();
   });
 
   it('requires an explicit dialog before replacing a draft', async () => {
@@ -56,7 +56,7 @@ describe('QuestionsSection', () => {
   it('states exactly what Start over preserves and removes', async () => {
     const user = userEvent.setup();
     renderApp('/tests/upload-ready');
-    await screen.findByRole('heading', { name: '3. Upload manual' });
+    await screen.findByRole('heading', { name: 'Upload manual' });
     await user.click(
       screen.getByRole('button', { name: 'Review and confirm questionsComplete' }),
     );

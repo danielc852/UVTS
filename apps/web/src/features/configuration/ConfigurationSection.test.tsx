@@ -34,7 +34,7 @@ describe('ConfigurationSection', () => {
   it('opens a clean workspace at Product setup with only product context fields', async () => {
     renderApp('/');
 
-    expect(await screen.findByRole('heading', { name: '1. Product setup' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Product setup' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Product image' })).toBeInTheDocument();
     expect(screen.getByLabelText('Product description')).toBeInTheDocument();
     expect(screen.getByLabelText('Number of questions')).toHaveValue('9');
@@ -44,7 +44,7 @@ describe('ConfigurationSection', () => {
   it('validates the required image, description, and count before creating a test', async () => {
     const user = userEvent.setup();
     renderApp('/');
-    await screen.findByRole('heading', { name: '1. Product setup' });
+    await screen.findByRole('heading', { name: 'Product setup' });
 
     await user.click(screen.getByRole('button', { name: 'Save and generate questions' }));
 
@@ -109,7 +109,7 @@ describe('ConfigurationSection', () => {
     const user = userEvent.setup();
     configurationApi.save.mockImplementation(() => new Promise(() => undefined));
     renderApp('/');
-    await screen.findByRole('heading', { name: '1. Product setup' });
+    await screen.findByRole('heading', { name: 'Product setup' });
     await user.upload(productImageInput(), new File(['image'], 'speaker.png', { type: 'image/png' }));
     await user.type(screen.getByLabelText('Product description'), 'A compact smart speaker.');
     await user.click(screen.getByRole('button', { name: 'Save and generate questions' }));

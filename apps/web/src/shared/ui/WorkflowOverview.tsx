@@ -42,7 +42,7 @@ export function WorkflowOverview({
             >
               <span className="workflow-step-label">
                 <span className="workflow-step-marker" aria-hidden="true">
-                  {index < currentIndex ? '✓' : index + 1}
+                  {index < currentIndex ? '✓' : null}
                 </span>
                 <span>{labels[stage]}</span>
               </span>

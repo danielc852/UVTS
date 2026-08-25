@@ -17,7 +17,6 @@ p, li { line-height: 1.55; }
   text-decoration: none;
 }
 
-.privacy-note,
 .supporting-text,
 .locked-text {
   color: var(--color-text-secondary, #525252);
@@ -234,7 +233,6 @@ p, li { line-height: 1.55; }
   .step-navigation > div:empty { display: none; }
   .step-navigation button { width: 100%; }
   .result-trigger { align-items: flex-start; flex-direction: column; }
-  .privacy-note { display: none; }
   .manual-ready-heading,
   .manual-actions { align-items: stretch; flex-direction: column; }
   .manual-actions { justify-content: flex-start; }

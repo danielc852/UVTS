@@ -123,7 +123,7 @@ export function ConfigurationSection({
         <Banner
           status="info"
           title="Product setup locked"
-          description="The confirmed questions are tied to this setup. Start over from the Questions step if you deliberately want to change it."
+          description="The confirmed questions are tied to this setup. Start over from the Questions section if you deliberately want to change it."
         />
       </StageSection>
     );

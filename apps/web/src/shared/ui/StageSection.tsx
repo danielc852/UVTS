@@ -35,7 +35,7 @@ export function StageSection({
       >
         <div className="stage-heading-row">
           <h2 id={headingId} tabIndex={-1}>
-            {number}. {title}
+            {title}
           </h2>
           {state === 'complete' ? <span className="stage-status">Complete</span> : null}
           {state === 'working' ? <span className="stage-status" role="status">Working</span> : null}

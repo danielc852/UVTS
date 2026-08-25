@@ -125,10 +125,10 @@ export function WorkspaceView({
       </header>
       <section
         className="workflow-step"
-        aria-label={`Step ${viewedIndex + 1} of ${workflowStages.length}`}
+        aria-label="Current workflow stage"
       >
         <WorkspaceStep workspace={workspace} stage={viewedStage} />
-        <nav className="step-navigation" aria-label="Workflow steps">
+        <nav className="step-navigation" aria-label="Workflow navigation">
           <div>
             {viewedIndex > 0 ? (
               <Button

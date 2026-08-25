@@ -47,7 +47,7 @@ describe('ManualSection', () => {
     });
     renderApp('/tests/upload-ready');
 
-    await screen.findByRole('heading', { name: '3. Upload manual' });
+    await screen.findByRole('heading', { name: 'Upload manual' });
     await user.upload(fileInput(), new File(['%PDF-test'], 'uploaded.pdf', { type: 'application/pdf' }));
     expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuenow', '42');
     finishUpload?.({
@@ -62,7 +62,7 @@ describe('ManualSection', () => {
       },
     });
 
-    expect(await screen.findByRole('heading', { name: '4. Evaluation' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Evaluation' })).toBeInTheDocument();
     expect(documentApi.uploadManual).toHaveBeenCalledWith(
       expect.objectContaining({ testId: 'upload-ready' }),
     );
@@ -71,7 +71,7 @@ describe('ManualSection', () => {
   it('confirms removing a manual that has connected results', async () => {
     const user = userEvent.setup();
     renderApp('/tests/report-ready');
-    await screen.findByRole('heading', { name: '5. Report' });
+    await screen.findByRole('heading', { name: 'Report' });
 
     await user.click(screen.getByRole('button', { name: 'Upload manualComplete' }));
     await user.click(await screen.findByRole('button', { name: 'Remove manual' }));
@@ -88,12 +88,12 @@ describe('ManualSection', () => {
     if (!uploadReady) return;
     documentApi.deleteManual.mockResolvedValue({ ...uploadReady, id: 'report-ready' });
     renderApp('/tests/report-ready');
-    await screen.findByRole('heading', { name: '5. Report' });
+    await screen.findByRole('heading', { name: 'Report' });
     await user.click(screen.getByRole('button', { name: 'Upload manualComplete' }));
     await user.click(await screen.findByRole('button', { name: 'Remove manual' }));
     await user.click(screen.getByRole('button', { name: 'Remove manual and results' }));
 
-    expect(await screen.findByRole('heading', { name: '3. Upload manual' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Upload manual' })).toBeInTheDocument();
     expect(screen.queryByText('sample-product-manual.pdf', { selector: 'strong' })).not.toBeInTheDocument();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(documentApi.deleteManual).toHaveBeenCalledWith('report-ready');
@@ -102,7 +102,7 @@ describe('ManualSection', () => {
   it('confirms replacing a manual that has connected results', async () => {
     const user = userEvent.setup();
     renderApp('/tests/report-ready');
-    await screen.findByRole('heading', { name: '5. Report' });
+    await screen.findByRole('heading', { name: 'Report' });
     await user.click(screen.getByRole('button', { name: 'Upload manualComplete' }));
 
     await user.upload(fileInput(), new File(['%PDF-new'], 'replacement.pdf', { type: 'application/pdf' }));
@@ -116,7 +116,7 @@ describe('ManualSection', () => {
     const user = userEvent.setup();
     documentApi.uploadManual.mockRejectedValue(new Error('network unavailable'));
     renderApp('/tests/report-ready');
-    await screen.findByRole('heading', { name: '5. Report' });
+    await screen.findByRole('heading', { name: 'Report' });
     await user.click(screen.getByRole('button', { name: 'Upload manualComplete' }));
     await user.upload(fileInput(), new File(['%PDF-new'], 'replacement.pdf', { type: 'application/pdf' }));
     await user.click(screen.getByRole('button', { name: 'Replace manual' }));
@@ -142,7 +142,7 @@ describe('ManualSection', () => {
       },
     });
     renderApp('/tests/report-ready');
-    await screen.findByRole('heading', { name: '5. Report' });
+    await screen.findByRole('heading', { name: 'Report' });
     await user.click(screen.getByRole('button', { name: 'Upload manualComplete' }));
     await user.upload(
       fileInput(),
@@ -150,11 +150,11 @@ describe('ManualSection', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Replace manual' }));
 
-    expect(await screen.findByRole('heading', { name: '3. Upload manual' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Upload manual' })).toBeInTheDocument();
     expect(screen.getByText('The replacement PDF does not contain readable text.')).toBeInTheDocument();
     expect(screen.getByText('sample-product-manual.pdf', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '5. Report' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Report' })).not.toBeInTheDocument();
   });
 
   it('stays on Upload manual while a background replacement is checked', async () => {
@@ -171,7 +171,7 @@ describe('ManualSection', () => {
       },
     });
     renderApp('/tests/report-ready');
-    await screen.findByRole('heading', { name: '5. Report' });
+    await screen.findByRole('heading', { name: 'Report' });
     await user.click(screen.getByRole('button', { name: 'Upload manualComplete' }));
     await user.upload(
       fileInput(),
@@ -179,7 +179,7 @@ describe('ManualSection', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Replace manual' }));
 
-    expect(await screen.findByRole('heading', { name: '3. Upload manual' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Upload manual' })).toBeInTheDocument();
     expect(screen.getByText('Checking the PDF')).toBeInTheDocument();
     expect(screen.getByText('sample-product-manual.pdf', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();

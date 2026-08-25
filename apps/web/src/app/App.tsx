@@ -8,13 +8,12 @@ export function App() {
   return (
     <AppShell
       height="auto"
-      variant="section"
+      variant="surface"
       contentPadding={0}
       topNav={
         <TopNav
           label="Product navigation"
           heading={<Link className="product-link" to="/">UVTS</Link>}
-          endContent={<span className="privacy-note">Private workspace</span>}
         />
       }
     >

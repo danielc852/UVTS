@@ -9,7 +9,7 @@ describe('WorkspacePage', () => {
     renderApp('/');
 
     expect(await screen.findByRole('heading', { name: 'Check a manual' })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: '1. Product setup' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Product setup' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
   });
@@ -17,23 +17,23 @@ describe('WorkspacePage', () => {
   it('does not let stale route state unlock manual upload before confirmation', async () => {
     renderApp({ pathname: '/', state: { showUpload: true } });
 
-    expect(await screen.findByRole('heading', { name: '1. Product setup' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '3. Upload manual' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Product setup' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Upload manual' })).not.toBeInTheDocument();
   });
 
   it('lets the user go back to completed steps and return to the current step', async () => {
     const user = userEvent.setup();
     renderApp('/tests/questions-ready');
 
-    expect(await screen.findByRole('heading', { name: '2. Review and confirm questions' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Review and confirm questions' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back to Product setup' }));
-    expect(await screen.findByRole('heading', { name: '1. Product setup' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '2. Review and confirm questions' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Product setup' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Review and confirm questions' })).not.toBeInTheDocument();
 
     await user.click(
       screen.getByRole('button', { name: 'Continue to Review and confirm questions' }),
     );
-    expect(screen.getByRole('heading', { name: '2. Review and confirm questions' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Review and confirm questions' })).toBeInTheDocument();
   });
 
   it('restores a completed report route', async () => {
@@ -47,7 +47,7 @@ describe('WorkspacePage', () => {
   it('shows confirmed Product setup as immutable when revisited', async () => {
     const user = userEvent.setup();
     renderApp('/tests/upload-ready');
-    await screen.findByRole('heading', { name: '3. Upload manual' });
+    await screen.findByRole('heading', { name: 'Upload manual' });
 
     await user.click(screen.getByRole('button', { name: 'Product setupComplete' }));
 
