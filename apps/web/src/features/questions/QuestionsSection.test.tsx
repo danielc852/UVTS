@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -91,9 +91,12 @@ describe('QuestionsSection', () => {
     await user.clear(firstQuestion);
     await user.type(firstQuestion, '  How do I pair the speaker?  ');
     await user.click(screen.getByRole('button', { name: 'Add question' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('radio', { name: 'Write manually' }));
+    await user.type(within(dialog).getByRole('textbox', { name: 'Question' }), '  Is a reset reversible?  ');
+    await user.click(within(dialog).getByRole('button', { name: 'Add question' }));
     const addedQuestion = screen.getByRole('textbox', { name: 'Question 10' });
     expect(addedQuestion).toHaveFocus();
-    await user.type(addedQuestion, '  Is a reset reversible?  ');
     await user.click(screen.getByRole('button', { name: 'Confirm questions' }));
 
     const submittedItems = questionApi.confirm.mock.calls[0][1];
@@ -102,30 +105,63 @@ describe('QuestionsSection', () => {
     expect(submittedItems[9]).toEqual({ id: undefined, text: 'Is a reset reversible?' });
   });
 
-  it('adds an editable AI question generated from the writer direction', async () => {
+  it('adds an AI loading row without blocking edits to other questions', async () => {
     const user = userEvent.setup();
-    questionApi.suggest.mockResolvedValue('Can I use the speaker during a power outage?');
+    let resolveSuggestion!: (question: string) => void;
+    questionApi.suggest.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveSuggestion = resolve;
+      }),
+    );
     renderApp('/tests/questions-ready');
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Generate question with AI' }),
-    );
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Add question' }));
+    const dialog = screen.getByRole('dialog');
     await user.type(
-      screen.getByRole('textbox', { name: 'Direction for the question' }),
+      within(dialog).getByRole('textbox', { name: 'Direction for the question' }),
       'Ask about using the product during a power outage.',
     );
-    await user.click(screen.getByRole('button', { name: 'Generate question' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Generate question' }));
 
     expect(questionApi.suggest).toHaveBeenCalledWith(
       'questions-ready',
       'Ask about using the product during a power outage.',
       expect.arrayContaining(['How do I complete the initial setup? (1)']),
     );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText(/AI is generating question 10/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Question 10' })).toHaveAttribute(
+      'readonly',
+    );
+    const firstQuestion = screen.getByRole('textbox', { name: 'Question 1' });
+    expect(firstQuestion).toBeEnabled();
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, 'Keep editing while AI works');
+
+    resolveSuggestion('Can I use the speaker during a power outage?');
     const generated = await screen.findByRole('textbox', { name: 'Question 10' });
     expect(generated).toHaveValue('Can I use the speaker during a power outage?');
-    expect(generated).toHaveFocus();
+    expect(firstQuestion).toHaveValue('Keep editing while AI works');
+  });
+
+  it('keeps manual question entry in the same add-question dialog', async () => {
+    const user = userEvent.setup();
+    renderApp('/tests/questions-ready');
+
+    await user.click(await screen.findByRole('button', { name: 'Add question' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('radio', { name: 'Generate with AI' })).toBeChecked();
+    await user.click(within(dialog).getByRole('radio', { name: 'Write manually' }));
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Question' }),
+      'Can I replace the battery?',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Add question' }));
+
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Question 10' })).toHaveValue(
+      'Can I replace the battery?',
+    );
   });
 
   it('shows inline errors for blank and duplicate questions', async () => {
@@ -175,7 +211,10 @@ describe('QuestionsSection', () => {
     const addButton = await screen.findByRole('button', { name: 'Add question' });
     for (let number = 10; number <= 15; number += 1) {
       await user.click(addButton);
-      await user.type(screen.getByRole('textbox', { name: `Question ${number}` }), `Extra ${number}`);
+      const dialog = screen.getByRole('dialog');
+      await user.click(within(dialog).getByRole('radio', { name: 'Write manually' }));
+      await user.type(within(dialog).getByRole('textbox', { name: 'Question' }), `Extra ${number}`);
+      await user.click(within(dialog).getByRole('button', { name: 'Add question' }));
     }
 
     expect(screen.getAllByRole('textbox')).toHaveLength(15);

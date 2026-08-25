@@ -154,6 +154,11 @@ p, li { line-height: 1.55; }
   outline-offset: 3px;
 }
 .question-editor-list li { padding-block: 20px; }
+.question-generation-status {
+  color: var(--color-text-secondary, #525252);
+  font-size: 0.875rem;
+  margin-block: 8px 0;
+}
 .question-editor-actions { flex-wrap: wrap; }
 .action-row { justify-content: flex-end; margin-block-start: 24px; }
 .evaluation-list li > span:first-child { max-width: 75%; }

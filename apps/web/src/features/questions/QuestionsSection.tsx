@@ -11,6 +11,7 @@ import {
   type ConfirmQuestionItem,
   generateQuestions,
   QuestionTransitionError,
+  suggestQuestion,
   startOver,
 } from './api';
 import { QuestionSuggestionDialog } from './QuestionSuggestionDialog';
@@ -27,6 +28,11 @@ type PendingAction = 'regenerate' | 'start-over';
 type QuestionAction =
   | { type: 'confirm'; items: ConfirmQuestionItem[] }
   | { type: PendingAction };
+interface QuestionSuggestionRequest {
+  clientId: string;
+  direction: string;
+  existingQuestions: string[];
+}
 
 function runQuestionAction(testId: string, action: QuestionAction): Promise<TestWorkspace> {
   switch (action.type) {
@@ -41,6 +47,10 @@ function runQuestionAction(testId: string, action: QuestionAction): Promise<Test
 
 interface EditableQuestion extends ConfirmQuestionItem {
   clientId: string;
+  generation?: {
+    error?: string;
+    isPending: boolean;
+  };
 }
 
 const maximumQuestions = 15;
@@ -73,6 +83,8 @@ function questionErrors(questions: EditableQuestion[]): Array<string | undefined
   }
 
   return questions.map((question) => {
+    if (question.generation?.isPending) return undefined;
+    if (question.generation?.error && !question.text.trim()) return question.generation.error;
     const normalized = normalizeQuestion(question.text);
     if (!question.text.trim()) return 'Enter a question before confirming.';
     if (!normalized) return 'Use at least one letter or number.';
@@ -131,10 +143,46 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
       setPendingAction(undefined);
     },
   });
+  const suggestionMutation = useMutation({
+    mutationFn: ({
+      direction,
+      existingQuestions,
+    }: QuestionSuggestionRequest) => suggestQuestion(workspace.id, direction, existingQuestions),
+    onSuccess: (text, { clientId }) => {
+      setEditableQuestions((current) =>
+        current.map((question) =>
+          question.clientId === clientId
+            ? { ...question, text, generation: undefined }
+            : question,
+        ),
+      );
+    },
+    onError: (error, { clientId }) => {
+      setEditableQuestions((current) =>
+        current.map((question) =>
+          question.clientId === clientId
+            ? {
+                ...question,
+                generation: {
+                  isPending: false,
+                  error:
+                    error instanceof QuestionTransitionError
+                      ? error.message
+                      : 'The question could not be generated. Write it manually or try again.',
+                },
+              }
+            : question,
+        ),
+      );
+    },
+  });
   const validationErrors = mergeQuestionErrors(clientValidationErrors, actionMutation.error);
   const hasValidationErrors = validationErrors.some(Boolean);
   const actionError = questionActionError(actionMutation.error);
   const isSubmitting = actionMutation.isPending;
+  const hasPendingSuggestion = editableQuestions.some(
+    (question) => question.generation?.isPending,
+  );
 
   if (state === 'locked') {
     return (
@@ -233,7 +281,7 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (hasValidationErrors || editableQuestions.length === 0) return;
+            if (hasPendingSuggestion || hasValidationErrors || editableQuestions.length === 0) return;
             actionMutation.mutate({
               type: 'confirm',
               items: editableQuestions.map(({ id, text }) => ({ id, text: text.trim() })),
@@ -264,6 +312,13 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
                     rows={3}
                     width="100%"
                     isDisabled={state === 'working' || isSubmitting}
+                    isReadOnly={question.generation?.isPending}
+                    isLoading={question.generation?.isPending}
+                    placeholder={
+                      question.generation?.isPending
+                        ? 'AI is generating this question…'
+                        : undefined
+                    }
                     disabledMessage="Wait for the current question action to finish."
                     status={
                       validationErrors[index]
@@ -272,6 +327,11 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
                     }
                     statusVariant="detached"
                   />
+                  {question.generation?.isPending ? (
+                    <p className="question-generation-status" role="status">
+                      AI is generating question {index + 1}. You can keep editing other questions.
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ol>
@@ -279,19 +339,6 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
           <div className="action-row question-editor-actions">
             <Button
               label="Add question"
-              variant="secondary"
-              type="button"
-              isDisabled={state === 'working' || isSubmitting || isAtQuestionLimit}
-              tooltip={isAtQuestionLimit ? 'You can confirm up to 15 questions.' : undefined}
-              onClick={() => {
-                actionMutation.reset();
-                const clientId = `new-${nextClientId.current++}`;
-                setEditableQuestions((current) => [...current, { clientId, text: '' }]);
-                setAddedQuestionClientId(clientId);
-              }}
-            />
-            <Button
-              label="Generate question with AI"
               variant="secondary"
               type="button"
               isDisabled={state === 'working' || isSubmitting || isAtQuestionLimit}
@@ -321,6 +368,7 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
                 isLegacy ||
                 isStale ||
                 editableQuestions.length === 0 ||
+                hasPendingSuggestion ||
                 hasValidationErrors
               }
               isLoading={isSubmitting && !pendingAction}
@@ -351,15 +399,23 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
         }}
       />
       <QuestionSuggestionDialog
-        testId={workspace.id}
         isOpen={isSuggestionOpen}
         onOpenChange={setIsSuggestionOpen}
-        existingQuestions={editableQuestions.map((question) => question.text)}
-        onAdd={(text) => {
+        onAddManual={(text) => {
           actionMutation.reset();
           const clientId = `new-${nextClientId.current++}`;
           setEditableQuestions((current) => [...current, { clientId, text }]);
           setAddedQuestionClientId(clientId);
+        }}
+        onGenerate={(direction) => {
+          actionMutation.reset();
+          const clientId = `new-${nextClientId.current++}`;
+          const existingQuestions = editableQuestions.map((question) => question.text);
+          setEditableQuestions((current) => [
+            ...current,
+            { clientId, text: '', generation: { isPending: true } },
+          ]);
+          suggestionMutation.mutate({ clientId, direction, existingQuestions });
         }}
       />
     </StageSection>
