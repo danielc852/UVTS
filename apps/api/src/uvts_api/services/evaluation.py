@@ -1,5 +1,9 @@
+import asyncio
 import logging
+import random
+from collections import deque
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import cast
 from uuid import uuid4
 
@@ -7,7 +11,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
-from uvts_api.agents.errors import describe_evaluator_failure
+from uvts_api.agents.errors import EvaluatorRateLimitError, describe_evaluator_failure
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput
 from uvts_api.core.errors import AppError
@@ -46,6 +50,37 @@ from uvts_api.services.workspace import load_workspace_state, update_state
 logger = logging.getLogger(__name__)
 
 QUESTION_FAILURE_MESSAGE = "The question could not be checked. Try this question again."
+_RATE_LIMIT_MAX_RETRIES = 2
+_RATE_LIMIT_BACKOFF_BASE_SECONDS = 1.0
+_RATE_LIMIT_JITTER_SECONDS = 0.25
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationOutcome:
+    question: Question
+    output: QuestionEvaluationOutput | None = None
+    error: Exception | None = None
+
+
+class _RateLimitCooldown:
+    """Share a provider-requested pause across one evaluation operation."""
+
+    def __init__(self) -> None:
+        self._resume_at = 0.0
+        self._lock = asyncio.Lock()
+
+    async def wait(self) -> None:
+        while True:
+            async with self._lock:
+                delay = self._resume_at - asyncio.get_running_loop().time()
+            if delay <= 0:
+                return
+            await asyncio.sleep(delay)
+
+    async def postpone(self, delay: float) -> None:
+        async with self._lock:
+            resume_at = asyncio.get_running_loop().time() + delay
+            self._resume_at = max(self._resume_at, resume_at)
 
 
 async def start_evaluation(
@@ -250,6 +285,7 @@ async def process_evaluation_operation(
     test_id: str,
     operation_id: str,
     question_ids: Sequence[str],
+    max_concurrency: int = 4,
 ) -> None:
     try:
         context = await _operation_context(db, storage, test_id, operation_id)
@@ -267,58 +303,71 @@ async def process_evaluation_operation(
         return
     questions, manual_pages, product_image, product_description = context
     questions_by_id = {question.id: question for question in questions}
+    waiting = deque(
+        question
+        for question_id in question_ids
+        if (question := questions_by_id.get(question_id)) is not None
+    )
+    active: dict[asyncio.Task[_EvaluationOutcome], Question] = {}
+    cooldown = _RateLimitCooldown()
 
-    for question_id in question_ids:
-        question = questions_by_id.get(question_id)
-        if question is None:
-            continue
-        if not await _mark_question_checking(
-            db=db,
-            notifications=notifications,
-            test_id=test_id,
-            operation_id=operation_id,
-            question_id=question_id,
-        ):
-            return
-        try:
-            output = await agent.evaluate_question(
-                question=question,
-                manual_pages=manual_pages,
-                product_image=product_image,
-                product_description=product_description,
-            )
-        except Exception as exc:
-            failure = describe_evaluator_failure(exc)
-            logger.warning(
-                "Question evaluation failed",
-                extra={
-                    "test_id": test_id,
-                    "operation_id": operation_id,
-                    "question_id": question_id,
-                    "error_stage": failure.stage.value,
-                    "error_type": failure.error_type,
-                    "error_message": failure.message,
-                },
-                exc_info=True,
-            )
-            if not await _mark_question_failed(
+    while waiting or active:
+        while waiting and len(active) < max_concurrency:
+            question = waiting.popleft()
+            if not await _mark_question_checking(
                 db=db,
                 notifications=notifications,
                 test_id=test_id,
                 operation_id=operation_id,
-                question_id=question_id,
+                question_id=question.id,
             ):
+                await _cancel_evaluations(active)
                 return
-            continue
-        if not await _mark_question_complete(
-            db=db,
-            notifications=notifications,
-            test_id=test_id,
-            operation_id=operation_id,
-            question=question,
-            output=output,
-        ):
-            return
+            task = asyncio.create_task(
+                _evaluate_question_with_rate_limit_retries(
+                    agent=agent,
+                    question=question,
+                    manual_pages=manual_pages,
+                    product_image=product_image,
+                    product_description=product_description,
+                    cooldown=cooldown,
+                    test_id=test_id,
+                    operation_id=operation_id,
+                )
+            )
+            active[task] = question
+
+        done, _ = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            question = active.pop(task)
+            outcome = task.result()
+            if outcome.error is not None:
+                _log_question_failure(
+                    outcome.error,
+                    test_id=test_id,
+                    operation_id=operation_id,
+                    question_id=question.id,
+                )
+                persisted = await _mark_question_failed(
+                    db=db,
+                    notifications=notifications,
+                    test_id=test_id,
+                    operation_id=operation_id,
+                    question_id=question.id,
+                )
+            else:
+                assert outcome.output is not None
+                persisted = await _mark_question_complete(
+                    db=db,
+                    notifications=notifications,
+                    test_id=test_id,
+                    operation_id=operation_id,
+                    question=question,
+                    output=outcome.output,
+                )
+            if not persisted:
+                await _cancel_evaluations(active)
+                return
 
     await _finalize_report(
         db=db,
@@ -326,6 +375,83 @@ async def process_evaluation_operation(
         notifications=notifications,
         test_id=test_id,
         operation_id=operation_id,
+    )
+
+
+async def _evaluate_question_with_rate_limit_retries(
+    *,
+    agent: EvaluatorAgent,
+    question: Question,
+    manual_pages: Sequence[Mapping[str, object]],
+    product_image: AgentProductImage | None,
+    product_description: str,
+    cooldown: _RateLimitCooldown,
+    test_id: str,
+    operation_id: str,
+) -> _EvaluationOutcome:
+    for retry_attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
+        await cooldown.wait()
+        try:
+            output = await agent.evaluate_question(
+                question=question,
+                manual_pages=manual_pages,
+                product_image=product_image,
+                product_description=product_description,
+            )
+            return _EvaluationOutcome(question=question, output=output)
+        except EvaluatorRateLimitError as error:
+            if retry_attempt >= _RATE_LIMIT_MAX_RETRIES:
+                return _EvaluationOutcome(question=question, error=error)
+            delay = error.retry_after_seconds
+            if delay is None:
+                delay = (
+                    _RATE_LIMIT_BACKOFF_BASE_SECONDS * (2**retry_attempt)
+                    + random.uniform(0.0, _RATE_LIMIT_JITTER_SECONDS)
+                )
+            await cooldown.postpone(delay)
+            logger.warning(
+                "Question evaluation rate limited; retry scheduled",
+                extra={
+                    "test_id": test_id,
+                    "operation_id": operation_id,
+                    "question_id": question.id,
+                    "retry_attempt": retry_attempt + 1,
+                    "retry_delay_seconds": round(delay, 3),
+                },
+            )
+        except Exception as error:
+            return _EvaluationOutcome(question=question, error=error)
+    raise AssertionError("rate-limit retry loop exhausted without an outcome")
+
+
+async def _cancel_evaluations(
+    active: Mapping[asyncio.Task[_EvaluationOutcome], Question],
+) -> None:
+    tasks = list(active)
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _log_question_failure(
+    error: Exception,
+    *,
+    test_id: str,
+    operation_id: str,
+    question_id: str,
+) -> None:
+    failure = describe_evaluator_failure(error)
+    logger.warning(
+        "Question evaluation failed",
+        extra={
+            "test_id": test_id,
+            "operation_id": operation_id,
+            "question_id": question_id,
+            "error_stage": failure.stage.value,
+            "error_type": failure.error_type,
+            "error_message": failure.message,
+        },
+        exc_info=(type(error), error, error.__traceback__),
     )
 
 

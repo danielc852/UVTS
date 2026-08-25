@@ -54,6 +54,15 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("AGENT_PROCESSING_EAGER", "UVTS_AGENT_PROCESSING_EAGER"),
     )
+    evaluation_max_concurrency: int = Field(
+        default=4,
+        ge=1,
+        le=15,
+        validation_alias=AliasChoices(
+            "EVALUATION_MAX_CONCURRENCY",
+            "UVTS_EVALUATION_MAX_CONCURRENCY",
+        ),
+    )
     openrouter_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENROUTER_API_KEY", "UVTS_OPENROUTER_API_KEY"),

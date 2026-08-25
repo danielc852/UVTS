@@ -106,6 +106,7 @@ class OperationDispatcher:
                 test_id=test_id,
                 operation_id=operation_id,
                 question_ids=question_ids,
+                max_concurrency=self._settings.evaluation_max_concurrency,
             )
 
         async def dispatch_failed(error: Exception) -> None:

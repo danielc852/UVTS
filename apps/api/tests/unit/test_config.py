@@ -1,5 +1,5 @@
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from uvts_api.adapters.ai import openrouter
 from uvts_api.adapters.ai.openrouter import build_openrouter_model, is_openrouter_configured
@@ -20,6 +20,12 @@ def test_settings_accept_shared_root_environment_names() -> None:
     assert settings.redis_url == "redis://cache/4"
     assert settings.cors_origins == ["https://app.example"]
     assert str(settings.storage_root) == "/private/documents"
+
+
+@pytest.mark.parametrize("value", [0, 16])
+def test_evaluation_concurrency_must_match_question_limits(value: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(EVALUATION_MAX_CONCURRENCY=value)
 
 
 def test_session_hash_is_fixed_length_and_does_not_contain_token() -> None:

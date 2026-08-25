@@ -33,6 +33,19 @@ class EvaluatorModelInvocationError(RuntimeError):
         super().__init__(self.safe_message)
 
 
+class EvaluatorRateLimitError(EvaluatorModelInvocationError):
+    """The provider rejected a request temporarily because of a rate limit."""
+
+    def __init__(
+        self,
+        source_error_type: str,
+        *,
+        retry_after_seconds: float | None,
+    ) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(source_error_type)
+
+
 class EvaluatorStructuredOutputError(ValueError):
     """The model response could not be parsed or validated against the schema."""
 

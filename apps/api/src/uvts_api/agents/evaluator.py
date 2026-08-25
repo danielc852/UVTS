@@ -1,6 +1,8 @@
 import base64
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, cast
 
 from langchain_core.exceptions import OutputParserException
@@ -12,6 +14,7 @@ from pydantic import ValidationError
 from uvts_api.agents.errors import (
     EvaluatorModelInvocationError,
     EvaluatorOutputError,
+    EvaluatorRateLimitError,
     EvaluatorStructuredOutputError,
 )
 from uvts_api.agents.schemas import (
@@ -107,6 +110,12 @@ class EvaluatorAgent:
         except (OutputParserException, ValidationError) as error:
             raise EvaluatorStructuredOutputError(type(error).__name__) from None
         except Exception as error:
+            is_rate_limit, retry_after_seconds = _rate_limit_retry_after_seconds(error)
+            if is_rate_limit:
+                raise EvaluatorRateLimitError(
+                    type(error).__name__,
+                    retry_after_seconds=retry_after_seconds,
+                ) from None
             raise EvaluatorModelInvocationError(type(error).__name__) from None
         try:
             return QuestionEvaluationOutput.model_validate(raw_output)
@@ -178,6 +187,30 @@ class EvaluatorAgent:
 
 def normalize_whitespace(value: str) -> str:
     return " ".join(value.split())
+
+
+def _rate_limit_retry_after_seconds(error: Exception) -> tuple[bool, float | None]:
+    """Identify a 429 and extract only its safe retry delay."""
+
+    if getattr(error, "status_code", None) != 429:
+        return False, None
+    headers = getattr(error, "headers", None)
+    if not isinstance(headers, Mapping):
+        return True, None
+    raw_value = headers.get("Retry-After") or headers.get("retry-after")
+    if not isinstance(raw_value, str):
+        return True, None
+    try:
+        return True, max(0.0, float(raw_value))
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(raw_value)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+        return True, max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+    except (TypeError, ValueError, OverflowError):
+        return True, None
 
 
 def _normalise_required(value: str, field_name: str) -> str:
@@ -253,11 +286,11 @@ def _validate_evaluation(
             raise EvaluatorOutputError("Evidence is not an exact extract from its page.")
         evidence.append(AgentEvidence(page=item.page, extract=extract))
 
-    if output.status == CoverageStatus.FOUND:
+    if output.status == CoverageStatus.FOUND.value:
         valid = found is not None and missing is None and bool(evidence)
-    elif output.status == CoverageStatus.PARTLY_FOUND:
+    elif output.status == CoverageStatus.PARTLY_FOUND.value:
         valid = found is not None and missing is not None and bool(evidence)
-    elif output.status == CoverageStatus.NOT_FOUND:
+    elif output.status == CoverageStatus.NOT_FOUND.value:
         valid = found is None and missing is not None and not evidence
     else:  # The Pydantic schema should make this unreachable.
         valid = False

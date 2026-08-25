@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 import uvts_api.api.dispatch as operation_dispatch
+import uvts_api.services.evaluation as evaluation_service
 from uvts_api.adapters.db.models import (
     AnonymousSession,
     Document,
@@ -49,6 +51,8 @@ class FakeStructuredModel:
         if self.model.before_invoke is not None:
             callback, self.model.before_invoke = self.model.before_invoke, None
             await callback()
+        if self.model.on_invoke is not None:
+            await self.model.on_invoke(self.schema, messages)
         value = self.model.responses[self.schema].popleft()
         if isinstance(value, Exception):
             raise value
@@ -60,6 +64,9 @@ class FakeChatModel:
         self.responses: defaultdict[type[BaseModel], deque[object]] = defaultdict(deque)
         self.calls: list[tuple[type[BaseModel], list[BaseMessage]]] = []
         self.before_invoke: Callable[[], Awaitable[None]] | None = None
+        self.on_invoke: (
+            Callable[[type[BaseModel], list[BaseMessage]], Awaitable[None]] | None
+        ) = None
 
     def with_structured_output(
         self,
@@ -80,11 +87,28 @@ def make_question(question_id: str) -> Question:
     )
 
 
+class FakeRateLimitError(RuntimeError):
+    def __init__(self, retry_after: str | None) -> None:
+        super().__init__("provider response with private detail")
+        self.status_code = 429
+        self.headers = {"Retry-After": retry_after} if retry_after is not None else {}
+
+
 async def prepare_evaluation_api(app: FastAPI, fake: FakeChatModel) -> None:
     app.state.settings = app.state.settings.model_copy(
         update={"agent_processing_eager": True}
     )
     app.state.chat_model = fake
+
+
+def found_output() -> dict[str, object]:
+    return {
+        "status": "found",
+        "information_needed": "Setup state",
+        "information_found": "Setup is complete",
+        "information_missing": None,
+        "evidence": [{"page": 1, "extract": "Setup is complete."}],
+    }
 
 
 async def seed_ready_test(
@@ -147,6 +171,138 @@ async def seed_ready_test(
         return test.id
 
 
+async def test_evaluation_runs_model_calls_up_to_configured_concurrency(
+    app: FastAPI,
+    client: AsyncClient,
+) -> None:
+    fake = FakeChatModel()
+    await prepare_evaluation_api(app, fake)
+    app.state.settings = app.state.settings.model_copy(
+        update={"evaluation_max_concurrency": 2}
+    )
+    test_id = await seed_ready_test(
+        app,
+        client,
+        questions=[make_question(f"q{index}") for index in range(5)],
+    )
+    fake.responses[QuestionEvaluationOutput].extend(found_output() for _ in range(5))
+    active_calls = 0
+    maximum_active_calls = 0
+
+    async def track_overlap(
+        schema: type[BaseModel],
+        messages: list[BaseMessage],
+    ) -> None:
+        nonlocal active_calls, maximum_active_calls
+        del messages
+        if schema is not QuestionEvaluationOutput:
+            return
+        active_calls += 1
+        maximum_active_calls = max(maximum_active_calls, active_calls)
+        await asyncio.sleep(0.01)
+        active_calls -= 1
+
+    fake.on_invoke = track_overlap
+
+    response = await client.post(f"/api/v1/tests/{test_id}/evaluation")
+
+    assert response.status_code == 202
+    assert maximum_active_calls == 2
+    assert [item["questionId"] for item in response.json()["evaluation"]] == [
+        "q0",
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+    ]
+    assert all(item["status"] == "complete" for item in response.json()["evaluation"])
+
+
+async def test_rate_limit_retry_honors_shared_cooldown_before_admitting_waiter(
+    app: FastAPI,
+    client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake = FakeChatModel()
+    await prepare_evaluation_api(app, fake)
+    app.state.settings = app.state.settings.model_copy(
+        update={"evaluation_max_concurrency": 2}
+    )
+    test_id = await seed_ready_test(
+        app,
+        client,
+        questions=[make_question("q1"), make_question("q2"), make_question("q3")],
+    )
+    fake.responses[QuestionEvaluationOutput].extend(
+        [FakeRateLimitError("0.03"), found_output(), found_output(), found_output()]
+    )
+    invocation_times: list[float] = []
+
+    async def record_invocation(
+        schema: type[BaseModel],
+        messages: list[BaseMessage],
+    ) -> None:
+        del messages
+        if schema is QuestionEvaluationOutput:
+            invocation_times.append(asyncio.get_running_loop().time())
+
+    fake.on_invoke = record_invocation
+
+    response = await client.post(f"/api/v1/tests/{test_id}/evaluation")
+
+    assert response.status_code == 202
+    assert all(item["status"] == "complete" for item in response.json()["evaluation"])
+    assert len(invocation_times) == 4
+    assert invocation_times[2] - invocation_times[0] >= 0.025
+    retry_log = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "Question evaluation rate limited; retry scheduled"
+    )
+    assert retry_log.retry_attempt == 1  # type: ignore[attr-defined]
+    assert retry_log.retry_delay_seconds == 0.03  # type: ignore[attr-defined]
+    assert "provider response with private detail" not in caplog.text
+
+
+async def test_rate_limit_without_retry_after_uses_backoff_and_exhaustion_is_isolated(
+    app: FastAPI,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeChatModel()
+    await prepare_evaluation_api(app, fake)
+    monkeypatch.setattr(evaluation_service, "_RATE_LIMIT_BACKOFF_BASE_SECONDS", 0.0)
+    monkeypatch.setattr(evaluation_service, "_RATE_LIMIT_JITTER_SECONDS", 0.0)
+    test_id = await seed_ready_test(
+        app,
+        client,
+        questions=[make_question("q1"), make_question("q2")],
+    )
+    fake.responses[QuestionEvaluationOutput].extend(
+        [
+            FakeRateLimitError(None),
+            found_output(),
+            FakeRateLimitError(None),
+            FakeRateLimitError(None),
+            FakeRateLimitError(None),
+        ]
+    )
+
+    response = await client.post(f"/api/v1/tests/{test_id}/evaluation")
+
+    assert response.status_code == 202
+    assert sorted(item["status"] for item in response.json()["evaluation"]) == [
+        "complete",
+        "failed",
+    ]
+    assert response.json()["report"]["counts"] == {
+        "found": 1,
+        "partly_found": 0,
+        "not_found": 0,
+        "failed": 1,
+    }
+
+
 async def test_evaluation_continues_after_failure_and_retry_preserves_completed_result(
     app: FastAPI,
     client: AsyncClient,
@@ -177,9 +333,7 @@ async def test_evaluation_continues_after_failure_and_retry_preserves_completed_
     )
     assert failure_log.error_stage == "model_invocation"  # type: ignore[attr-defined]
     assert failure_log.error_type == "RuntimeError"  # type: ignore[attr-defined]
-    assert (  # type: ignore[attr-defined]
-        failure_log.error_message == "The evaluator model request failed."
-    )
+    assert (failure_log.error_message == "The evaluator model request failed.")  # type: ignore[attr-defined]
     assert "provider request included private details" not in caplog.text
     body = evaluated.json()
     assert body["status"] == "incomplete"

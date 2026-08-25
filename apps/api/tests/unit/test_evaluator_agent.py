@@ -10,6 +10,7 @@ from uvts_api.agents.errors import (
     EvaluatorFailureStage,
     EvaluatorModelInvocationError,
     EvaluatorOutputError,
+    EvaluatorRateLimitError,
     EvaluatorStructuredOutputError,
     describe_evaluator_failure,
 )
@@ -50,6 +51,13 @@ class FakeChatModel:
         assert method == "json_schema"
         assert strict is True
         return FakeStructuredModel(self, schema)
+
+
+class FakeRateLimitError(RuntimeError):
+    def __init__(self, retry_after: str | None) -> None:
+        super().__init__("private provider rate-limit detail")
+        self.status_code = 429
+        self.headers = {"Retry-After": retry_after} if retry_after is not None else {}
 
 
 def question(question_id: str = "q1") -> Question:
@@ -138,6 +146,28 @@ async def test_classifies_model_invocation_failure_without_copying_provider_deta
     assert details.message == "The evaluator model request failed."
     assert private_detail not in str(raised.value)
     assert len(model.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "expected_delay"),
+    [("1.5", 1.5), (None, None), ("not-a-delay", None)],
+)
+async def test_classifies_rate_limit_and_keeps_only_safe_retry_delay(
+    retry_after: str | None,
+    expected_delay: float | None,
+) -> None:
+    model = FakeChatModel()
+    model.responses[QuestionEvaluationOutput].append(FakeRateLimitError(retry_after))
+
+    with pytest.raises(EvaluatorRateLimitError) as raised:
+        await EvaluatorAgent(cast(BaseChatModel, model)).evaluate_question(
+            question=question(),
+            manual_pages=[{"page": 1, "text": "Private manual content"}],
+        )
+
+    assert raised.value.retry_after_seconds == expected_delay
+    assert raised.value.source_error_type == "FakeRateLimitError"
+    assert "private provider rate-limit detail" not in str(raised.value)
 
 
 async def test_classifies_invalid_pydantic_output_as_structured_output_failure() -> None:
