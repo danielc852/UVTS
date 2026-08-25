@@ -3,10 +3,17 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
+from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.messages.content import create_image_block
+from pydantic import ValidationError
 
+from uvts_api.agents.errors import (
+    EvaluatorModelInvocationError,
+    EvaluatorOutputError,
+    EvaluatorStructuredOutputError,
+)
 from uvts_api.agents.schemas import (
     AgentEvidence,
     QuestionEvaluationOutput,
@@ -34,10 +41,6 @@ question IDs with partly_found or not_found status. Each recommendation must lin
 from your own output. Keep wording concise and understandable to a non-technical writer."""
 
 
-class EvaluatorOutputError(ValueError):
-    """The model returned a structurally valid but unsupported evaluation judgment."""
-
-
 class EvaluatorAgent:
     """Typed model operations for evidence checking and report synthesis."""
 
@@ -53,11 +56,6 @@ class EvaluatorAgent:
         product_description: str = "",
     ) -> QuestionEvaluationOutput:
         pages = _normalise_pages(manual_pages)
-        structured_model = self._model.with_structured_output(
-            QuestionEvaluationOutput,
-            method="json_schema",
-            strict=True,
-        )
         prompt = _evaluation_prompt(question, pages, product_description)
         content: list[str | dict[Any, Any]] = [{"type": "text", "text": prompt}]
         if product_image is not None:
@@ -70,13 +68,26 @@ class EvaluatorAgent:
                     ),
                 )
             )
-        raw_output = await structured_model.ainvoke(
-            [
-                SystemMessage(content=_EVALUATION_SYSTEM_PROMPT),
-                HumanMessage(content=content),
-            ]
-        )
-        output = QuestionEvaluationOutput.model_validate(raw_output)
+        try:
+            structured_model = self._model.with_structured_output(
+                QuestionEvaluationOutput,
+                method="json_schema",
+                strict=True,
+            )
+            raw_output = await structured_model.ainvoke(
+                [
+                    SystemMessage(content=_EVALUATION_SYSTEM_PROMPT),
+                    HumanMessage(content=content),
+                ]
+            )
+        except (OutputParserException, ValidationError) as error:
+            raise EvaluatorStructuredOutputError(type(error).__name__) from None
+        except Exception as error:
+            raise EvaluatorModelInvocationError(type(error).__name__) from None
+        try:
+            output = QuestionEvaluationOutput.model_validate(raw_output)
+        except ValidationError as error:
+            raise EvaluatorStructuredOutputError(type(error).__name__) from None
         return _validate_evaluation(output, pages)
 
     async def evaluate_question(
@@ -110,18 +121,26 @@ class EvaluatorAgent:
             return ReportSynthesisOutput(
                 gaps=[], recommendations=[], follow_up_questions=[]
             )
-        structured_model = self._model.with_structured_output(
-            ReportSynthesisOutput,
-            method="json_schema",
-            strict=True,
-        )
-        raw_output = await structured_model.ainvoke(
-            [
-                SystemMessage(content=_REPORT_SYSTEM_PROMPT),
-                HumanMessage(content=_synthesis_prompt(results)),
-            ]
-        )
-        output = ReportSynthesisOutput.model_validate(raw_output)
+        try:
+            structured_model = self._model.with_structured_output(
+                ReportSynthesisOutput,
+                method="json_schema",
+                strict=True,
+            )
+            raw_output = await structured_model.ainvoke(
+                [
+                    SystemMessage(content=_REPORT_SYSTEM_PROMPT),
+                    HumanMessage(content=_synthesis_prompt(results)),
+                ]
+            )
+        except (OutputParserException, ValidationError) as error:
+            raise EvaluatorStructuredOutputError(type(error).__name__) from None
+        except Exception as error:
+            raise EvaluatorModelInvocationError(type(error).__name__) from None
+        try:
+            output = ReportSynthesisOutput.model_validate(raw_output)
+        except ValidationError as error:
+            raise EvaluatorStructuredOutputError(type(error).__name__) from None
         return _validate_synthesis(output, eligible_results)
 
     async def synthesize_report(

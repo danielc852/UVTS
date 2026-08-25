@@ -12,10 +12,16 @@ from uvts_api.adapters.storage.local import LocalDocumentStorage
 from uvts_api.api.router import api_router
 from uvts_api.core.config import Settings, get_settings
 from uvts_api.core.http import RequestIdMiddleware, install_error_handlers
+from uvts_api.core.logging import configure_logging
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     runtime_settings = settings or get_settings()
+    configure_logging(
+        service="uvts-api",
+        environment=runtime_settings.environment,
+        level=runtime_settings.log_level,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

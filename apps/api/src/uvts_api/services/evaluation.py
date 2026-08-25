@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
+from uvts_api.agents.errors import describe_evaluator_failure
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput
 from uvts_api.core.errors import AppError
@@ -287,14 +288,18 @@ async def process_evaluation_operation(
                 product_description=product_description,
             )
         except Exception as exc:
+            failure = describe_evaluator_failure(exc)
             logger.warning(
                 "Question evaluation failed",
                 extra={
                     "test_id": test_id,
                     "operation_id": operation_id,
                     "question_id": question_id,
-                    "error_type": type(exc).__name__,
+                    "error_stage": failure.stage.value,
+                    "error_type": failure.error_type,
+                    "error_message": failure.message,
                 },
+                exc_info=True,
             )
             if not await _mark_question_failed(
                 db=db,
@@ -727,13 +732,17 @@ async def _finalize_report(
             results=completed_results,
         )
     except Exception as exc:
+        failure = describe_evaluator_failure(exc)
         logger.warning(
             "Report synthesis failed",
             extra={
                 "test_id": test_id,
                 "operation_id": operation_id,
-                "error_type": type(exc).__name__,
+                "error_stage": failure.stage.value,
+                "error_type": failure.error_type,
+                "error_message": failure.message,
             },
+            exc_info=True,
         )
         test = await _active_test(db, test_id, operation_id)
         if test is None:

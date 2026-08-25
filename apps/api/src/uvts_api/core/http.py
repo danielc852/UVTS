@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
@@ -10,7 +11,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from uvts_api.core.errors import AppError
+from uvts_api.core.logging import reset_log_context, set_log_context
 from uvts_api.schemas.errors import ErrorDetail, ErrorResponse
+
+logger = logging.getLogger(__name__)
 
 
 def request_id(request: Request) -> str:
@@ -22,9 +26,13 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         request.state.request_id = request.headers.get("X-Request-ID") or str(uuid4())
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id(request)
-        return response
+        token = set_log_context(request_id=request_id(request))
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id(request)
+            return response
+        finally:
+            reset_log_context(token)
 
 
 def error_response(request: Request, error: ErrorDetail, status_code: int) -> JSONResponse:
@@ -76,7 +84,17 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-        del exc
+        logger.error(
+            "Unexpected API request failure",
+            extra={
+                "request_id": request_id(request),
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": 500,
+                "error_type": type(exc).__name__,
+            },
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
         return error_response(
             request,
             ErrorDetail(

@@ -6,7 +6,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
-from uvts_api.agents.evaluator import EvaluatorAgent, EvaluatorOutputError
+from uvts_api.agents.errors import (
+    EvaluatorFailureStage,
+    EvaluatorModelInvocationError,
+    EvaluatorOutputError,
+    EvaluatorStructuredOutputError,
+    describe_evaluator_failure,
+)
+from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import (
     QuestionEvaluationOutput,
     ReportSynthesisOutput,
@@ -114,6 +121,42 @@ async def test_product_context_is_labelled_interpretation_only_and_manual_is_evi
     assert "image" in human
 
 
+async def test_classifies_model_invocation_failure_without_copying_provider_detail() -> None:
+    model = FakeChatModel()
+    private_detail = "provider echoed private manual content"
+    model.responses[QuestionEvaluationOutput].append(RuntimeError(private_detail))
+
+    with pytest.raises(EvaluatorModelInvocationError) as raised:
+        await EvaluatorAgent(cast(BaseChatModel, model)).evaluate_question(
+            question=question(),
+            manual_pages=[{"page": 1, "text": "Private manual content"}],
+        )
+
+    details = describe_evaluator_failure(raised.value)
+    assert details.stage == EvaluatorFailureStage.MODEL_INVOCATION
+    assert details.error_type == "RuntimeError"
+    assert details.message == "The evaluator model request failed."
+    assert private_detail not in str(raised.value)
+
+
+async def test_classifies_invalid_pydantic_output_as_structured_output_failure() -> None:
+    model = FakeChatModel()
+    model.responses[QuestionEvaluationOutput].append(
+        {"status": "found", "information_needed": "setup steps"}
+    )
+
+    with pytest.raises(EvaluatorStructuredOutputError) as raised:
+        await EvaluatorAgent(cast(BaseChatModel, model)).evaluate_question(
+            question=question(),
+            manual_pages=[{"page": 1, "text": "Setup steps"}],
+        )
+
+    details = describe_evaluator_failure(raised.value)
+    assert details.stage == EvaluatorFailureStage.STRUCTURED_OUTPUT
+    assert details.error_type == "ValidationError"
+    assert details.message == "The evaluator returned an invalid structured response."
+
+
 @pytest.mark.parametrize(
     "output",
     [
@@ -144,11 +187,16 @@ async def test_rejects_status_field_invariant_violations(output: object) -> None
     model = FakeChatModel()
     model.responses[QuestionEvaluationOutput].append(output)
 
-    with pytest.raises(EvaluatorOutputError, match="coverage status"):
+    with pytest.raises(EvaluatorOutputError, match="coverage status") as raised:
         await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
             question=question(),
             manual_pages=[{"page": 1, "text": "Setup steps"}],
         )
+
+    details = describe_evaluator_failure(raised.value)
+    assert details.stage == EvaluatorFailureStage.SEMANTIC_VALIDATION
+    assert details.error_type == "EvaluatorOutputError"
+    assert details.message == "The evaluator response failed semantic validation."
 
 
 @pytest.mark.parametrize(

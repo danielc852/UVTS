@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 
     app_name: str = "UVTS API"
     environment: str = "development"
+    log_level: str = Field(
+        default="INFO",
+        validation_alias=AliasChoices("LOG_LEVEL", "UVTS_LOG_LEVEL"),
+    )
     api_v1_prefix: str = "/api/v1"
     database_url: str = Field(
         default="postgresql+asyncpg://uvts:uvts@localhost:5432/uvts",

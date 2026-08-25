@@ -150,6 +150,7 @@ async def seed_ready_test(
 async def test_evaluation_continues_after_failure_and_retry_preserves_completed_result(
     app: FastAPI,
     client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     fake = FakeChatModel()
     await prepare_evaluation_api(app, fake)
@@ -171,6 +172,15 @@ async def test_evaluation_continues_after_failure_and_retry_preserves_completed_
     evaluated = await client.post(f"/api/v1/tests/{test_id}/evaluation")
 
     assert evaluated.status_code == 202
+    failure_log = next(
+        record for record in caplog.records if record.getMessage() == "Question evaluation failed"
+    )
+    assert failure_log.error_stage == "model_invocation"  # type: ignore[attr-defined]
+    assert failure_log.error_type == "RuntimeError"  # type: ignore[attr-defined]
+    assert (  # type: ignore[attr-defined]
+        failure_log.error_message == "The evaluator model request failed."
+    )
+    assert "provider request included private details" not in caplog.text
     body = evaluated.json()
     assert body["status"] == "incomplete"
     assert body["currentStage"] == "report"
