@@ -3,10 +3,8 @@ from fastapi import APIRouter, Request
 from uvts_api.api.dependencies import (
     CurrentSession,
     DatabaseSession,
-    DocumentStorageDependency,
-    RuntimeSettings,
+    OperationDispatcherDependency,
 )
-from uvts_api.api.routes.evaluations import dispatch_evaluation
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestResponse
 from uvts_api.services.evaluation import (
@@ -33,17 +31,12 @@ async def retry_report(
     request: Request,
     current: CurrentSession,
     db: DatabaseSession,
-    storage: DocumentStorageDependency,
-    settings: RuntimeSettings,
+    operation_dispatcher: OperationDispatcherDependency,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
     operation_id, question_ids = await start_report_retry(db=db, test=test)
     await publish_evaluation_change(request.app.state.notifications, test_id)
-    await dispatch_evaluation(
-        request=request,
-        db=db,
-        storage=storage,
-        settings=settings,
+    await operation_dispatcher.evaluate(
         test_id=test_id,
         operation_id=operation_id,
         question_ids=question_ids,

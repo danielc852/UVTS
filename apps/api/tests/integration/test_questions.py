@@ -8,7 +8,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import SecretStr
 from sqlalchemy import event
 
-import uvts_api.api.routes.questions as question_routes
+import uvts_api.api.operation_dispatch as operation_dispatch
 from tests.fake_models import FakeStructuredChatModel
 from tests.integration.test_question_configuration import create_setup, save_setup
 from uvts_api.adapters.db.models import Document
@@ -50,7 +50,7 @@ async def generation_client(
     app.state.settings.openrouter_api_key = SecretStr("test-openrouter-key")
     app.state.notifications = notifications
     monkeypatch.setattr(
-        question_routes,
+        operation_dispatch,
         "build_question_agent",
         lambda settings: QuestionAgent(cast(BaseChatModel, model)),
     )
@@ -247,7 +247,7 @@ async def test_non_eager_generation_returns_a_durable_active_operation(
     app.state.settings.agent_processing_eager = False
     dispatched: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        question_routes,
+        operation_dispatch,
         "enqueue_question_generation",
         lambda queued_test_id, operation_id: dispatched.append((queued_test_id, operation_id)),
     )
@@ -276,7 +276,7 @@ async def test_queue_failure_clears_the_operation_and_keeps_retry_path(
         del test_id, operation_id
         raise ConnectionError("broker unavailable")
 
-    monkeypatch.setattr(question_routes, "enqueue_question_generation", fail_to_queue)
+    monkeypatch.setattr(operation_dispatch, "enqueue_question_generation", fail_to_queue)
     response = await client.post(f"/api/v1/tests/{test_id}/questions")
 
     assert response.status_code == 202

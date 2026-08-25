@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import AnonymousSession
+from uvts_api.api.operation_dispatch import OperationDispatcher
 from uvts_api.core.config import Settings
 from uvts_api.core.errors import session_required
 from uvts_api.core.security import hash_session_token
@@ -31,6 +32,25 @@ def get_document_storage(request: Request) -> DocumentStorage:
 
 
 DocumentStorageDependency = Annotated[DocumentStorage, Depends(get_document_storage)]
+
+
+def get_operation_dispatcher(
+    request: Request,
+    db: DatabaseSession,
+    storage: DocumentStorageDependency,
+    settings: RuntimeSettings,
+) -> OperationDispatcher:
+    return OperationDispatcher(
+        request=request,
+        db=db,
+        storage=storage,
+        settings=settings,
+    )
+
+
+OperationDispatcherDependency = Annotated[
+    OperationDispatcher, Depends(get_operation_dispatcher)
+]
 
 
 async def get_current_session(

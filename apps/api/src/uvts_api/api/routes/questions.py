@@ -4,66 +4,20 @@ from uvts_api.api.dependencies import (
     CurrentSession,
     DatabaseSession,
     DocumentStorageDependency,
+    OperationDispatcherDependency,
     RuntimeSettings,
 )
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestResponse
 from uvts_api.services.questions import (
     begin_question_generation,
-    build_question_agent,
     confirm_questions,
-    fail_question_generation,
-    process_question_generation,
     publish_question_change,
     start_over,
 )
 from uvts_api.services.tests import get_owned_test, to_test_response
-from uvts_api.workers.questions import enqueue_question_generation
 
 router = APIRouter(prefix="/tests", tags=["questions"])
-
-
-async def dispatch_question_generation(
-    *,
-    request: Request,
-    db: DatabaseSession,
-    storage: DocumentStorageDependency,
-    settings: RuntimeSettings,
-    test_id: str,
-    operation_id: str,
-) -> None:
-    if not settings.agent_processing_eager:
-        try:
-            enqueue_question_generation(test_id, operation_id)
-        except Exception as error:
-            await fail_question_generation(
-                db=db,
-                notifications=request.app.state.notifications,
-                test_id=test_id,
-                operation_id=operation_id,
-                error=error,
-            )
-        return
-
-    try:
-        agent = build_question_agent(settings)
-    except Exception as error:
-        await fail_question_generation(
-            db=db,
-            notifications=request.app.state.notifications,
-            test_id=test_id,
-            operation_id=operation_id,
-            error=error,
-        )
-        return
-    await process_question_generation(
-        db=db,
-        storage=storage,
-        notifications=request.app.state.notifications,
-        agent=agent,
-        test_id=test_id,
-        operation_id=operation_id,
-    )
 
 
 @router.post(
@@ -83,8 +37,8 @@ async def generate_test_questions(
     request: Request,
     current: CurrentSession,
     db: DatabaseSession,
-    storage: DocumentStorageDependency,
     settings: RuntimeSettings,
+    operation_dispatcher: OperationDispatcherDependency,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
     operation = await begin_question_generation(
@@ -93,11 +47,7 @@ async def generate_test_questions(
         test=test,
         settings=settings,
     )
-    await dispatch_question_generation(
-        request=request,
-        db=db,
-        storage=storage,
-        settings=settings,
+    await operation_dispatcher.generate_questions(
         test_id=operation.test_id,
         operation_id=operation.operation_id,
     )

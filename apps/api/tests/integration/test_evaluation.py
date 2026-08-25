@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import cast
 
@@ -11,7 +11,7 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 from sqlalchemy import select
 
-import uvts_api.api.routes.evaluations as evaluations
+import uvts_api.api.operation_dispatch as operation_dispatch
 from uvts_api.adapters.db.models import (
     AnonymousSession,
     Document,
@@ -397,7 +397,7 @@ async def test_queue_failure_clears_operation_and_keeps_retry_path(
         del args, kwargs
         raise ConnectionError("broker unavailable")
 
-    monkeypatch.setattr(evaluations, "enqueue_evaluation_processing", fail_enqueue)
+    monkeypatch.setattr(operation_dispatch, "enqueue_evaluation_processing", fail_enqueue)
 
     response = await client.post(f"/api/v1/tests/{test_id}/evaluation")
 
@@ -410,6 +410,39 @@ async def test_queue_failure_clears_operation_and_keeps_retry_path(
         test = await db.get(RunModel, test_id)
         assert test is not None
         assert test.active_operation_id is None
+
+
+async def test_non_eager_evaluation_queues_the_operation_arguments(
+    app: FastAPI,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_id = await seed_ready_test(app, client, questions=[make_question("q1")])
+    app.state.settings = app.state.settings.model_copy(
+        update={"agent_processing_eager": False}
+    )
+    dispatched: list[tuple[str, str, list[str]]] = []
+
+    def record_enqueue(
+        queued_test_id: str,
+        operation_id: str,
+        question_ids: Sequence[str],
+    ) -> None:
+        dispatched.append((queued_test_id, operation_id, list(question_ids)))
+
+    monkeypatch.setattr(
+        operation_dispatch,
+        "enqueue_evaluation_processing",
+        record_enqueue,
+    )
+
+    response = await client.post(f"/api/v1/tests/{test_id}/evaluation")
+
+    assert response.status_code == 202
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        assert dispatched == [(test_id, test.active_operation_id, ["q1"])]
 
 
 def valid_synthesis(question_id: str) -> dict[str, object]:

@@ -13,7 +13,7 @@ from uvts_api.api.dependencies import (
     CurrentSession,
     DatabaseSession,
     DocumentStorageDependency,
-    RuntimeSettings,
+    OperationDispatcherDependency,
 )
 from uvts_api.core.errors import AppError, manual_not_found
 from uvts_api.domain.enums import TestStatus
@@ -28,12 +28,10 @@ from uvts_api.schemas.workspace import (
 )
 from uvts_api.services.documents import (
     delete_storage_after_commit,
-    process_pending_document,
     publish_change,
     update_state,
 )
 from uvts_api.services.tests import get_owned_test, to_test_response
-from uvts_api.workers.documents import enqueue_document_processing
 
 router = APIRouter(prefix="/tests", tags=["documents"])
 
@@ -77,25 +75,6 @@ def safe_filename(upload: UploadFile) -> str:
     return (filename or "manual.pdf")[:255]
 
 
-async def dispatch_processing(
-    *,
-    request: Request,
-    db: DatabaseSession,
-    storage: DocumentStorageDependency,
-    settings: RuntimeSettings,
-    document_id: str,
-) -> None:
-    if settings.document_processing_eager:
-        await process_pending_document(
-            db=db,
-            storage=storage,
-            notifications=request.app.state.notifications,
-            document_id=document_id,
-        )
-    else:
-        enqueue_document_processing(document_id)
-
-
 @router.put(
     "/{test_id}/manual",
     response_model=TestResponse,
@@ -113,7 +92,7 @@ async def replace_manual(
     current: CurrentSession,
     db: DatabaseSession,
     storage: DocumentStorageDependency,
-    settings: RuntimeSettings,
+    operation_dispatcher: OperationDispatcherDependency,
     file: Annotated[UploadFile, File()],
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id, for_update=True)
@@ -178,13 +157,7 @@ async def replace_manual(
         await delete_storage_after_commit(storage, storage_key)
         raise
     await publish_change(request.app.state.notifications, test.id)
-    await dispatch_processing(
-        request=request,
-        db=db,
-        storage=storage,
-        settings=settings,
-        document_id=document.id,
-    )
+    await operation_dispatcher.process_document(document.id)
     await db.refresh(test)
     return to_test_response(test)
 

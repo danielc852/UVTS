@@ -1,13 +1,15 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
 
+import uvts_api.api.operation_dispatch as operation_dispatch
 from tests.integration.test_question_configuration import create_setup
 from tests.pdf_helpers import write_pdf
-from uvts_api.adapters.db.models import QuestionEvaluationRecord
+from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord
 from uvts_api.adapters.db.models import TestRun as RunModel
 from uvts_api.schemas.workspace import (
     QuestionSet,
@@ -134,6 +136,34 @@ async def test_attach_view_range_and_remove_manual_preserves_confirmed_questions
     assert deleted_body["configuration"] == configuration
     assert deleted_body["questionSet"] == body["questionSet"]
     assert deleted_body["manual"] is None
+
+
+async def test_non_eager_upload_queues_the_pending_document(
+    app: FastAPI,
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_id, _ = await create_confirmed_test(app, client)
+    source = write_pdf(tmp_path / "queued.pdf")
+    app.state.settings.document_processing_eager = False
+    dispatched: list[str] = []
+    monkeypatch.setattr(operation_dispatch, "enqueue_document_processing", dispatched.append)
+
+    uploaded = await upload_manual(client, test_id, source)
+
+    assert uploaded.status_code == 202
+    assert uploaded.json()["status"] == "questions_confirmed"
+    async with app.state.session_factory() as db:
+        document = (
+            await db.scalars(
+                select(Document).where(
+                    Document.test_run_id == test_id,
+                    Document.role == "pending",
+                )
+            )
+        ).one()
+        assert dispatched == [document.id]
 
 
 async def test_manual_upload_is_locked_until_confirmation_and_is_private(

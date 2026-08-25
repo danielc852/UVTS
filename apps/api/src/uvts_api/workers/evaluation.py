@@ -1,20 +1,16 @@
 import asyncio
 from collections.abc import Sequence
 
-from redis.asyncio import Redis
-
 from uvts_api.adapters.ai.openrouter import build_openrouter_model
 from uvts_api.adapters.db.models import TestRun
-from uvts_api.adapters.db.session import create_engine, create_session_factory
-from uvts_api.adapters.notifications.redis import RedisStateNotifications
-from uvts_api.adapters.storage.local import LocalDocumentStorage
 from uvts_api.agents.evaluator import EvaluatorAgent
-from uvts_api.core.config import Settings, get_settings
+from uvts_api.core.config import Settings
 from uvts_api.services.evaluation import (
     fail_evaluation_dispatch,
     process_evaluation_operation,
 )
 from uvts_api.workers.celery_app import celery_app
+from uvts_api.workers.runtime import open_worker_runtime
 
 
 @celery_app.task(name="uvts.evaluation.process")  # type: ignore[untyped-decorator]
@@ -27,43 +23,32 @@ async def _process_evaluation(
     operation_id: str,
     question_ids: Sequence[str],
 ) -> None:
-    settings = get_settings()
-    engine = create_engine(settings.database_url)
-    session_factory = create_session_factory(engine)
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        async with session_factory() as db:
-            test = await db.get(TestRun, test_id)
-            operation_settings = _settings_for_operation(settings, test)
-            notifications = RedisStateNotifications(
-                redis, heartbeat_seconds=settings.sse_heartbeat_seconds
+    async with open_worker_runtime() as runtime:
+        test = await runtime.db.get(TestRun, test_id)
+        operation_settings = _settings_for_operation(runtime.settings, test)
+        try:
+            agent = EvaluatorAgent(
+                build_openrouter_model(operation_settings, temperature=0.0)
             )
-            try:
-                agent = EvaluatorAgent(
-                    build_openrouter_model(operation_settings, temperature=0.0)
-                )
-            except Exception as error:
-                await fail_evaluation_dispatch(
-                    db=db,
-                    notifications=notifications,
-                    test_id=test_id,
-                    operation_id=operation_id,
-                    question_ids=question_ids,
-                    error=error,
-                )
-                return
-            await process_evaluation_operation(
-                db=db,
-                storage=LocalDocumentStorage(settings.storage_root),
-                agent=agent,
-                notifications=notifications,
+        except Exception as error:
+            await fail_evaluation_dispatch(
+                db=runtime.db,
+                notifications=runtime.notifications,
                 test_id=test_id,
                 operation_id=operation_id,
                 question_ids=question_ids,
+                error=error,
             )
-    finally:
-        await redis.aclose()
-        await engine.dispose()
+            return
+        await process_evaluation_operation(
+            db=runtime.db,
+            storage=runtime.storage,
+            agent=agent,
+            notifications=runtime.notifications,
+            test_id=test_id,
+            operation_id=operation_id,
+            question_ids=question_ids,
+        )
 
 
 def enqueue_evaluation_processing(
