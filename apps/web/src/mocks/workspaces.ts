@@ -111,6 +111,7 @@ export const workspaceFixtures = {
     ...baseWorkspace,
     id: 'configuration-generating',
     status: 'generating',
+    currentStage: 'questions',
     configuration: productConfiguration,
   },
   'questions-ready': {

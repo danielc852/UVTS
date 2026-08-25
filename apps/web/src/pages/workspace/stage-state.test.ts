@@ -22,6 +22,15 @@ describe('getStageState', () => {
     expect(getStageState(workspace, 'evaluation')).toBe('working');
   });
 
+  it('marks Review as working and Product setup as complete during initial generation', () => {
+    const workspace = getWorkspaceFixture('configuration-generating');
+    expect(workspace).toBeDefined();
+    if (!workspace) return;
+
+    expect(getStageState(workspace, 'configuration')).toBe('complete');
+    expect(getStageState(workspace, 'questions')).toBe('working');
+  });
+
   it('marks Upload manual as working during a replacement without regressing the workflow', () => {
     const workspace = getWorkspaceFixture('report-ready');
     expect(workspace).toBeDefined();

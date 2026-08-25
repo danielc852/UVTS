@@ -1,5 +1,5 @@
 import { Button } from '@astryxdesign/core/Button';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 
 import {
   workflowStages,
@@ -33,7 +33,23 @@ const stageFallbacks: Record<WorkflowStage, string> = {
   report: 'Loading report…',
 };
 
-function WorkspaceStep({ workspace, stage }: { workspace: TestWorkspace; stage: WorkflowStage }) {
+function FocusStageHeading({ stage, requestId }: { stage: WorkflowStage; requestId: number }) {
+  useEffect(() => {
+    if (requestId > 0) focusStageHeading(stage);
+  }, [requestId, stage]);
+
+  return null;
+}
+
+function WorkspaceStep({
+  workspace,
+  stage,
+  focusRequestId,
+}: {
+  workspace: TestWorkspace;
+  stage: WorkflowStage;
+  focusRequestId: number;
+}) {
   const state = getStageState(workspace, stage);
   let content;
 
@@ -77,7 +93,20 @@ function WorkspaceStep({ workspace, stage }: { workspace: TestWorkspace; stage: 
       break;
   }
 
-  return <Suspense fallback={<p role="status">{stageFallbacks[stage]}</p>}>{content}</Suspense>;
+  return (
+    <Suspense fallback={<p role="status">{stageFallbacks[stage]}</p>}>
+      <FocusStageHeading stage={stage} requestId={focusRequestId} />
+      {content}
+    </Suspense>
+  );
+}
+
+function focusStageHeading(stage: WorkflowStage) {
+  requestAnimationFrame(() =>
+    document
+      .getElementById(`stage-${workflowStages.indexOf(stage) + 1}-heading`)
+      ?.focus(),
+  );
 }
 
 export function WorkspaceView({
@@ -88,12 +117,21 @@ export function WorkspaceView({
   initialStage: WorkflowStage;
 }) {
   const [viewedStage, setViewedStage] = useState<WorkflowStage>(initialStage);
+  const [focusRequestId, setFocusRequestId] = useState(0);
+  const previousWorkspace = useRef({ id: workspace.id, currentStage: workspace.currentStage });
   const currentIndex = workflowStages.indexOf(workspace.currentStage);
   const viewedIndex = workflowStages.indexOf(viewedStage);
 
   useEffect(() => {
     setViewedStage(initialStage);
-  }, [initialStage, workspace.id]);
+    const previous = previousWorkspace.current;
+    const stageAdvanced =
+      previous.id === workspace.id &&
+      workflowStages.indexOf(workspace.currentStage) >
+        workflowStages.indexOf(previous.currentStage);
+    previousWorkspace.current = { id: workspace.id, currentStage: workspace.currentStage };
+    if (stageAdvanced) setFocusRequestId((current) => current + 1);
+  }, [initialStage, workspace.id, workspace.currentStage]);
 
   useEffect(() => {
     const nextStage = workflowStages[currentIndex + 1];
@@ -103,11 +141,7 @@ export function WorkspaceView({
   const showStage = (stage: WorkflowStage) => {
     if (workflowStages.indexOf(stage) > currentIndex) return;
     setViewedStage(stage);
-    requestAnimationFrame(() =>
-      document
-        .getElementById(`stage-${workflowStages.indexOf(stage) + 1}-heading`)
-        ?.focus(),
-    );
+    setFocusRequestId((current) => current + 1);
   };
 
   return (
@@ -127,7 +161,11 @@ export function WorkspaceView({
         className="workflow-step"
         aria-label="Current workflow stage"
       >
-        <WorkspaceStep workspace={workspace} stage={viewedStage} />
+        <WorkspaceStep
+          workspace={workspace}
+          stage={viewedStage}
+          focusRequestId={focusRequestId}
+        />
         <nav className="step-navigation" aria-label="Workflow navigation">
           <div>
             {viewedIndex > 0 ? (

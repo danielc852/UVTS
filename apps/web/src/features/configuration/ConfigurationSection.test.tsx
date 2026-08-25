@@ -53,12 +53,14 @@ describe('ConfigurationSection', () => {
     expect(configurationApi.save).not.toHaveBeenCalled();
   });
 
-  it('updates Product setup and starts generation from the persisted test', async () => {
+  it('advances from Product setup to question-generation progress', async () => {
     const user = userEvent.setup();
     const saved = getWorkspaceFixture('configuration-saved');
-    const generating = getWorkspaceFixture('questions-ready');
+    const generating = getWorkspaceFixture('configuration-generating');
     expect(saved).toBeDefined();
     expect(generating).toBeDefined();
+    if (!saved || !generating) return;
+    generating.id = saved.id;
     configurationApi.save.mockResolvedValue(saved);
     configurationApi.generate.mockResolvedValue(generating);
     renderApp('/tests/configuration-saved');
@@ -79,6 +81,13 @@ describe('ConfigurationSection', () => {
       ),
     );
     expect(configurationApi.generate).toHaveBeenCalledWith('configuration-saved');
+    const reviewHeading = await screen.findByRole('heading', {
+      name: 'Review and confirm questions',
+    });
+    expect(screen.getByRole('progressbar', { name: 'Generating questions' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Product setup' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add question' })).not.toBeInTheDocument();
+    await waitFor(() => expect(reviewHeading).toHaveFocus());
   });
 
   it('shows the required OpenRouter key notice when generation cannot start', async () => {
@@ -118,12 +127,15 @@ describe('ConfigurationSection', () => {
     expect(configurationApi.save).toHaveBeenCalledOnce();
   });
 
-  it('restores the generation state after reload and locks setup controls', async () => {
+  it('restores first-time generation in Review without empty editor controls', async () => {
     renderApp('/tests/configuration-generating');
 
-    expect(await screen.findByText('Creating draft questions')).toBeInTheDocument();
-    expect(screen.getByLabelText('Product description')).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByLabelText('Number of questions')).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('button', { name: 'Save and generate questions' })).toBeDisabled();
+    expect(
+      await screen.findByRole('heading', { name: 'Review and confirm questions' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Generating questions' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Question 1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add question' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm questions' })).not.toBeInTheDocument();
   });
 });
