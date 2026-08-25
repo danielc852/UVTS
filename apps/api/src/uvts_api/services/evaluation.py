@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.evaluator import EvaluatorAgent
 from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOutput
-from uvts_api.core.errors import AppError, test_not_found
+from uvts_api.core.errors import AppError
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.question_generator import AgentProductImage
@@ -33,7 +33,9 @@ from uvts_api.schemas.workspace import (
     WorkspaceState,
 )
 from uvts_api.services.documents import update_state
+from uvts_api.services.events import publish_test_change
 from uvts_api.services.question_generation import build_question_generation_input
+from uvts_api.services.tests import lock_test
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ async def start_evaluation(
     test: TestRun,
     agent_settings: Mapping[str, object],
 ) -> tuple[str, list[str]]:
-    test = await _lock_test(db, test.id)
+    test = await lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
@@ -95,9 +97,7 @@ async def start_evaluation(
     )
     question_ids = [question.id for question in state.questions]
     await db.execute(
-        delete(QuestionEvaluationRecord).where(
-            QuestionEvaluationRecord.test_run_id == test.id
-        )
+        delete(QuestionEvaluationRecord).where(QuestionEvaluationRecord.test_run_id == test.id)
     )
     db.add_all(
         [
@@ -141,7 +141,7 @@ async def start_question_retry(
     test: TestRun,
     question_id: str,
 ) -> tuple[str, list[str]]:
-    test = await _lock_test(db, test.id)
+    test = await lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
     _ensure_current_evaluation_source(state)
@@ -178,7 +178,7 @@ async def start_failed_retries(
     db: AsyncSession,
     test: TestRun,
 ) -> tuple[str, list[str]]:
-    test = await _lock_test(db, test.id)
+    test = await lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
     source = _ensure_current_evaluation_source(state)
@@ -188,19 +188,15 @@ async def start_failed_retries(
             await db.scalars(
                 select(QuestionEvaluationRecord).where(
                     QuestionEvaluationRecord.test_run_id == test.id,
-                    QuestionEvaluationRecord.question_set_id
-                    == source.question_set_id,
-                    QuestionEvaluationRecord.manual_id
-                    == source.manual_id,
+                    QuestionEvaluationRecord.question_set_id == source.question_set_id,
+                    QuestionEvaluationRecord.manual_id == source.manual_id,
                     QuestionEvaluationRecord.status == EvaluationStatus.FAILED.value,
                 )
             )
         ).all()
     }
     failed_records = [
-        records_by_id[question.id]
-        for question in state.questions
-        if question.id in records_by_id
+        records_by_id[question.id] for question in state.questions if question.id in records_by_id
     ]
     if not failed_records:
         raise AppError(
@@ -222,15 +218,11 @@ async def start_report_retry(
     db: AsyncSession,
     test: TestRun,
 ) -> tuple[str, list[str]]:
-    test = await _lock_test(db, test.id)
+    test = await lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_no_active_operation(test)
     _ensure_current_evaluation_source(state)
-    if (
-        state.report is None
-        or state.error is None
-        or state.error.code != "report_synthesis_failed"
-    ):
+    if state.report is None or state.error is None or state.error.code != "report_synthesis_failed":
         raise AppError(
             status_code=409,
             code="report_retry_not_available",
@@ -332,14 +324,12 @@ async def publish_evaluation_change(
     notifications: StateNotifications,
     test_id: str,
 ) -> None:
-    try:
-        await notifications.publish(test_id)
-    except Exception:
-        logger.warning(
-            "Evaluation state notification failed",
-            extra={"test_id": test_id},
-            exc_info=True,
-        )
+    await publish_test_change(
+        notifications,
+        test_id,
+        logger=logger,
+        failure_message="Evaluation state notification failed",
+    )
 
 
 async def fail_evaluation_dispatch(
@@ -368,10 +358,8 @@ async def fail_evaluation_dispatch(
                 await db.scalars(
                     select(QuestionEvaluationRecord).where(
                         QuestionEvaluationRecord.test_run_id == test_id,
-                        QuestionEvaluationRecord.question_set_id
-                        == source.question_set_id,
-                        QuestionEvaluationRecord.manual_id
-                        == source.manual_id,
+                        QuestionEvaluationRecord.question_set_id == source.question_set_id,
+                        QuestionEvaluationRecord.manual_id == source.manual_id,
                     )
                 )
             ).all()
@@ -394,35 +382,20 @@ async def fail_evaluation_dispatch(
         ]
         results = build_question_results(state.questions, records)
         counts = build_coverage_counts(results)
-        report = Report(
-            source=state.evaluation_source,
-            is_complete=False,
-            counts=counts,
-            results=results,
-            gaps=[],
-            recommendations=[],
-            follow_up_questions=[],
-        )
+        report = _incomplete_report(state.evaluation_source, results, counts)
         workspace_error = WorkspaceError(
             code="evaluation_dispatch_failed",
             title="The evaluation could not start",
-            message="The questions were saved, but UVTS could not start checking them. Try again.",
+            message=(
+                "The questions were saved, but UVTS could not start checking them. Try again."
+            ),
             stage=WorkflowStage.EVALUATION,
             retryable=True,
         )
     else:
         evaluation = state.evaluation
         report = state.report
-        workspace_error = WorkspaceError(
-            code="report_synthesis_failed",
-            title="The report is incomplete",
-            message=(
-                "Question results were saved, but UVTS could not finish the report. "
-                "Try finishing the report again."
-            ),
-            stage=WorkflowStage.REPORT,
-            retryable=True,
-        )
+        workspace_error = _report_synthesis_error()
     test.active_operation_id = None
     test.status = TestStatus.INCOMPLETE.value
     update_state(
@@ -469,9 +442,7 @@ async def _prepare_retry(
             update={
                 "current_stage": WorkflowStage.EVALUATION,
                 "evaluation": [
-                    item.model_copy(
-                        update={"status": EvaluationStatus.WAITING, "error": None}
-                    )
+                    item.model_copy(update={"status": EvaluationStatus.WAITING, "error": None})
                     if item.question_id in retry_ids
                     else item
                     for item in state.evaluation
@@ -483,18 +454,6 @@ async def _prepare_retry(
     )
     await db.commit()
     return operation_id
-
-
-async def _lock_test(db: AsyncSession, test_id: str) -> TestRun:
-    test = await db.scalar(
-        select(TestRun)
-        .where(TestRun.id == test_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if test is None:
-        raise test_not_found()
-    return test
 
 
 async def _operation_context(
@@ -525,9 +484,7 @@ async def _operation_context(
             message="The manual selected for this evaluation is no longer available.",
         )
     try:
-        product_context = await build_question_generation_input(
-            db=db, storage=storage, test=test
-        )
+        product_context = await build_question_generation_input(db=db, storage=storage, test=test)
         product_image: AgentProductImage | None = product_context.product_image
         product_description = product_context.product_description
     except AppError:
@@ -578,7 +535,7 @@ async def _record_for_question(
                 QuestionEvaluationRecord.question_set_id == source.question_set_id,
                 QuestionEvaluationRecord.manual_id == source.manual_id,
             )
-        )
+        ),
     )
 
 
@@ -590,24 +547,23 @@ async def _mark_question_checking(
     operation_id: str,
     question_id: str,
 ) -> bool:
-    test = await _active_test(db, test_id, operation_id)
-    if test is None:
+    active = await _active_record(db, test_id, operation_id, question_id)
+    if active is None:
         return False
-    state = WorkspaceState.model_validate(test.state)
-    record = await _record_for_question(db, state, test_id, question_id)
+    test, record = active
     if record is None:
         return True
     record.status = EvaluationStatus.CHECKING.value
     record.error = None
     record.attempt += 1
-    _update_evaluation_item(
-        test,
+    await _commit_evaluation_item(
+        db=db,
+        notifications=notifications,
+        test=test,
         question_id=question_id,
         status=EvaluationStatus.CHECKING,
         error=None,
     )
-    await db.commit()
-    await publish_evaluation_change(notifications, test_id)
     return True
 
 
@@ -619,24 +575,23 @@ async def _mark_question_failed(
     operation_id: str,
     question_id: str,
 ) -> bool:
-    test = await _active_test(db, test_id, operation_id)
-    if test is None:
+    active = await _active_record(db, test_id, operation_id, question_id)
+    if active is None:
         return False
-    state = WorkspaceState.model_validate(test.state)
-    record = await _record_for_question(db, state, test_id, question_id)
+    test, record = active
     if record is None:
         return True
     record.status = EvaluationStatus.FAILED.value
     record.result = None
     record.error = QUESTION_FAILURE_MESSAGE
-    _update_evaluation_item(
-        test,
+    await _commit_evaluation_item(
+        db=db,
+        notifications=notifications,
+        test=test,
         question_id=question_id,
         status=EvaluationStatus.FAILED,
         error=QUESTION_FAILURE_MESSAGE,
     )
-    await db.commit()
-    await publish_evaluation_change(notifications, test_id)
     return True
 
 
@@ -649,11 +604,10 @@ async def _mark_question_complete(
     question: Question,
     output: QuestionEvaluationOutput,
 ) -> bool:
-    test = await _active_test(db, test_id, operation_id)
-    if test is None:
+    active = await _active_record(db, test_id, operation_id, question.id)
+    if active is None:
         return False
-    state = WorkspaceState.model_validate(test.state)
-    record = await _record_for_question(db, state, test_id, question.id)
+    test, record = active
     if record is None:
         return True
     result = QuestionResult(
@@ -667,15 +621,48 @@ async def _mark_question_complete(
     record.status = EvaluationStatus.COMPLETE.value
     record.result = result.model_dump(mode="json", by_alias=True)
     record.error = None
-    _update_evaluation_item(
-        test,
+    await _commit_evaluation_item(
+        db=db,
+        notifications=notifications,
+        test=test,
         question_id=question.id,
         status=EvaluationStatus.COMPLETE,
         error=None,
     )
-    await db.commit()
-    await publish_evaluation_change(notifications, test_id)
     return True
+
+
+async def _active_record(
+    db: AsyncSession,
+    test_id: str,
+    operation_id: str,
+    question_id: str,
+) -> tuple[TestRun, QuestionEvaluationRecord | None] | None:
+    test = await _active_test(db, test_id, operation_id)
+    if test is None:
+        return None
+    state = WorkspaceState.model_validate(test.state)
+    record = await _record_for_question(db, state, test_id, question_id)
+    return test, record
+
+
+async def _commit_evaluation_item(
+    *,
+    db: AsyncSession,
+    notifications: StateNotifications,
+    test: TestRun,
+    question_id: str,
+    status: EvaluationStatus,
+    error: str | None,
+) -> None:
+    _update_evaluation_item(
+        test,
+        question_id=question_id,
+        status=status,
+        error=error,
+    )
+    await db.commit()
+    await publish_evaluation_change(notifications, test.id)
 
 
 def _update_evaluation_item(
@@ -719,10 +706,8 @@ async def _finalize_report(
             await db.scalars(
                 select(QuestionEvaluationRecord).where(
                     QuestionEvaluationRecord.test_run_id == test_id,
-                    QuestionEvaluationRecord.question_set_id
-                    == source.question_set_id,
-                    QuestionEvaluationRecord.manual_id
-                    == source.manual_id,
+                    QuestionEvaluationRecord.question_set_id == source.question_set_id,
+                    QuestionEvaluationRecord.manual_id == source.manual_id,
                 )
             )
         ).all()
@@ -755,25 +740,12 @@ async def _finalize_report(
             state.model_copy(
                 update={
                     "current_stage": WorkflowStage.REPORT,
-                    "report": Report(
-                        source=state.evaluation_source,
-                        is_complete=False,
-                        counts=counts,
-                        results=results,
-                        gaps=[],
-                        recommendations=[],
-                        follow_up_questions=[],
+                    "report": _incomplete_report(
+                        state.evaluation_source,
+                        results,
+                        counts,
                     ),
-                    "error": WorkspaceError(
-                        code="report_synthesis_failed",
-                        title="The report is incomplete",
-                        message=(
-                            "Question results were saved, but UVTS could not finish the report. "
-                            "Try finishing the report again."
-                        ),
-                        stage=WorkflowStage.REPORT,
-                        retryable=True,
-                    ),
+                    "error": _report_synthesis_error(),
                 }
             ),
         )
@@ -794,9 +766,7 @@ async def _finalize_report(
         synthesis=synthesis,
     )
     test.active_operation_id = None
-    test.status = (
-        TestStatus.COMPLETE.value if report.is_complete else TestStatus.INCOMPLETE.value
-    )
+    test.status = TestStatus.COMPLETE.value if report.is_complete else TestStatus.INCOMPLETE.value
     update_state(
         test,
         state.model_copy(
@@ -892,6 +862,35 @@ def _failed_result(question: Question) -> QuestionResult:
         information_found=None,
         information_missing=None,
         evidence=[],
+    )
+
+
+def _incomplete_report(
+    source: EvaluationSource | None,
+    results: list[QuestionResult],
+    counts: CoverageCounts,
+) -> Report:
+    return Report(
+        source=source,
+        is_complete=False,
+        counts=counts,
+        results=results,
+        gaps=[],
+        recommendations=[],
+        follow_up_questions=[],
+    )
+
+
+def _report_synthesis_error() -> WorkspaceError:
+    return WorkspaceError(
+        code="report_synthesis_failed",
+        title="The report is incomplete",
+        message=(
+            "Question results were saved, but UVTS could not finish the report. "
+            "Try finishing the report again."
+        ),
+        stage=WorkflowStage.REPORT,
+        retryable=True,
     )
 
 

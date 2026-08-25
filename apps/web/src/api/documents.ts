@@ -1,15 +1,12 @@
 import type { TestWorkspace } from '../shared/model/workspace';
 import { apiClient, apiUrl } from './client';
 import { bootstrapSession, parseTestWorkspace } from './workspaces';
+import type { ApiErrorEnvelope } from './workspace-requests';
 
 interface UploadManualOptions {
   file: File;
   testId: string;
   onProgress?: (percent: number) => void;
-}
-
-interface ErrorEnvelope {
-  error?: { code?: string; message?: string };
 }
 
 export class DocumentRequestError extends Error {
@@ -23,7 +20,7 @@ export class DocumentRequestError extends Error {
 
 function requestError(xhr: XMLHttpRequest): DocumentRequestError {
   try {
-    const body = JSON.parse(xhr.responseText) as ErrorEnvelope;
+    const body = JSON.parse(xhr.responseText) as ApiErrorEnvelope;
     return new DocumentRequestError(
       body.error?.message ?? 'The manual could not be uploaded. Try again.',
       body.error?.code,
@@ -75,7 +72,7 @@ export async function deleteManual(testId: string): Promise<TestWorkspace> {
     params: { path: { test_id: testId } },
   });
   if (error || !data) {
-    const envelope = error as ErrorEnvelope | undefined;
+    const envelope = error as ApiErrorEnvelope | undefined;
     throw new DocumentRequestError(
       envelope?.error?.message ?? 'The manual could not be removed. Try again.',
       envelope?.error?.code,

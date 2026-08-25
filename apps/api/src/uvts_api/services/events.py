@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,6 +14,23 @@ def encode_sse(*, event: str, event_id: int, data: object) -> str:
         f"event: {event}\n"
         f"data: {json.dumps(data, separators=(',', ':'), default=str)}\n\n"
     )
+
+
+async def publish_test_change(
+    notifications: StateNotifications,
+    test_id: str,
+    *,
+    logger: logging.Logger,
+    failure_message: str,
+) -> None:
+    try:
+        await notifications.publish(test_id)
+    except Exception:
+        logger.warning(
+            failure_message,
+            extra={"test_id": test_id},
+            exc_info=True,
+        )
 
 
 async def stream_test_events(

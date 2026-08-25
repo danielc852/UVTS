@@ -20,6 +20,7 @@ from uvts_api.schemas.workspace import (
     WorkspaceError,
     WorkspaceState,
 )
+from uvts_api.services.events import publish_test_change
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +86,12 @@ def inspect_pdf(path: Path) -> ProcessedPdf:
 
 
 async def publish_change(notifications: StateNotifications, test_id: str) -> None:
-    try:
-        await notifications.publish(test_id)
-    except Exception:
-        logger.warning("Document state notification failed", exc_info=True)
+    await publish_test_change(
+        notifications,
+        test_id,
+        logger=logger,
+        failure_message="Document state notification failed",
+    )
 
 
 async def delete_storage_after_commit(storage: DocumentStorage, storage_key: str) -> None:
@@ -119,29 +122,10 @@ async def process_pending_document(
     notifications: StateNotifications,
     document_id: str,
 ) -> None:
-    candidate = await db.scalar(select(Document).where(Document.id == document_id))
-    if candidate is None or candidate.role != "pending":
+    locked = await _lock_pending_document(db, document_id)
+    if locked is None:
         return
-    test = await db.scalar(
-        select(TestRun)
-        .where(TestRun.id == candidate.test_run_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if test is None:
-        return
-    document = await db.scalar(
-        select(Document)
-        .where(
-            Document.id == document_id,
-            Document.test_run_id == test.id,
-            Document.role == "pending",
-        )
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if document is None:
-        return
+    test, document = locked
 
     document.status = ManualUploadStatus.PROCESSING.value
     state = WorkspaceState.model_validate(test.state)
@@ -223,25 +207,10 @@ async def promote_pending_document(
 ) -> tuple[str, str | None] | None:
     """Atomically replace the active manual only after the candidate is valid."""
 
-    candidate = await db.scalar(select(Document).where(Document.id == document_id))
-    if candidate is None:
+    locked = await _lock_pending_document(db, document_id)
+    if locked is None:
         return None
-    test = await db.scalar(
-        select(TestRun)
-        .where(TestRun.id == candidate.test_run_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if test is None:
-        return None
-    document = await db.scalar(
-        select(Document)
-        .where(Document.id == document_id, Document.test_run_id == test.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if document is None or document.role != "pending":
-        return None
+    test, document = locked
     active = await db.scalar(
         select(Document).where(
             Document.test_run_id == test.id,
@@ -254,9 +223,7 @@ async def promote_pending_document(
         await db.flush()
 
     await db.execute(
-        delete(QuestionEvaluationRecord).where(
-            QuestionEvaluationRecord.test_run_id == test.id
-        )
+        delete(QuestionEvaluationRecord).where(QuestionEvaluationRecord.test_run_id == test.id)
     )
 
     document.role = "active"
@@ -299,25 +266,10 @@ async def fail_pending_document(
     document_id: str,
     error: ManualValidationError,
 ) -> None:
-    candidate = await db.scalar(select(Document).where(Document.id == document_id))
-    if candidate is None:
+    locked = await _lock_pending_document(db, document_id)
+    if locked is None:
         return
-    test = await db.scalar(
-        select(TestRun)
-        .where(TestRun.id == candidate.test_run_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if test is None:
-        return
-    document = await db.scalar(
-        select(Document)
-        .where(Document.id == document_id, Document.test_run_id == test.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if document is None or document.role != "pending":
-        return
+    test, document = locked
     storage_key = document.storage_key
     active = await db.scalar(
         select(Document).where(
@@ -348,3 +300,33 @@ async def fail_pending_document(
     await db.commit()
     await delete_storage_after_commit(storage, storage_key)
     await publish_change(notifications, test.id)
+
+
+async def _lock_pending_document(
+    db: AsyncSession,
+    document_id: str,
+) -> tuple[TestRun, Document] | None:
+    candidate = await db.scalar(select(Document).where(Document.id == document_id))
+    if candidate is None or candidate.role != "pending":
+        return None
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == candidate.test_run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if test is None:
+        return None
+    document = await db.scalar(
+        select(Document)
+        .where(
+            Document.id == document_id,
+            Document.test_run_id == test.id,
+            Document.role == "pending",
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if document is None:
+        return None
+    return test, document

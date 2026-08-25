@@ -1,10 +1,5 @@
 import type { TestWorkspace } from '../shared/model/workspace';
-import { apiUrl } from './client';
-import { bootstrapSession, parseTestWorkspace } from './workspaces';
-
-interface ErrorEnvelope {
-  error?: { code?: string; message?: string };
-}
+import { requestWorkspace, type ApiErrorDetail } from './workspace-requests';
 
 export class EvaluationRequestError extends Error {
   constructor(
@@ -16,32 +11,31 @@ export class EvaluationRequestError extends Error {
 }
 
 async function post(path: string): Promise<TestWorkspace> {
-  await bootstrapSession();
-  let response: Response;
-  try {
-    response = await fetch(apiUrl(path), { method: 'POST', credentials: 'include' });
-  } catch {
-    throw new EvaluationRequestError('The evaluation request could not be sent. Check your connection and try again.');
-  }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new EvaluationRequestError('UVTS received an invalid evaluation response.');
-  }
-  if (!response.ok) {
-    const envelope = body as ErrorEnvelope;
-    throw new EvaluationRequestError(
-      envelope.error?.message ?? 'The evaluation request could not be completed. Try again.',
-      envelope.error?.code,
-    );
-  }
-  return parseTestWorkspace(body);
+  return requestWorkspace({
+    path,
+    init: { method: 'POST' },
+    messages: {
+      network: 'The evaluation request could not be sent. Check your connection and try again.',
+      invalidResponse: 'UVTS received an invalid evaluation response.',
+      failed: 'The evaluation request could not be completed. Try again.',
+    },
+    createError: (message: string, detail?: ApiErrorDetail) =>
+      new EvaluationRequestError(message, detail?.code),
+  });
 }
 
-export const startEvaluation = (testId: string) => post(`/api/v1/tests/${testId}/evaluation`);
-export const retryFailedQuestions = (testId: string) =>
-  post(`/api/v1/tests/${testId}/evaluation/retry-failed`);
-export const retryQuestion = (testId: string, questionId: string) =>
-  post(`/api/v1/tests/${testId}/evaluation/${questionId}/retry`);
-export const retryReport = (testId: string) => post(`/api/v1/tests/${testId}/report/retry`);
+export function startEvaluation(testId: string): Promise<TestWorkspace> {
+  return post(`/api/v1/tests/${testId}/evaluation`);
+}
+
+export function retryFailedQuestions(testId: string): Promise<TestWorkspace> {
+  return post(`/api/v1/tests/${testId}/evaluation/retry-failed`);
+}
+
+export function retryQuestion(testId: string, questionId: string): Promise<TestWorkspace> {
+  return post(`/api/v1/tests/${testId}/evaluation/${questionId}/retry`);
+}
+
+export function retryReport(testId: string): Promise<TestWorkspace> {
+  return post(`/api/v1/tests/${testId}/report/retry`);
+}

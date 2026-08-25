@@ -1,10 +1,5 @@
 import type { TestWorkspace } from '../shared/model/workspace';
-import { apiUrl } from './client';
-import { bootstrapSession, parseTestWorkspace } from './workspaces';
-
-interface ErrorEnvelope {
-  error?: { code?: string; message?: string };
-}
+import { requestWorkspace, type ApiErrorDetail } from './workspace-requests';
 
 export class QuestionTransitionError extends Error {
   constructor(
@@ -16,31 +11,17 @@ export class QuestionTransitionError extends Error {
 }
 
 async function transition(path: string): Promise<TestWorkspace> {
-  await bootstrapSession();
-  let response: Response;
-  try {
-    response = await fetch(apiUrl(path), {
-      method: 'POST',
-      credentials: 'include',
-    });
-  } catch {
-    throw new QuestionTransitionError('The request could not be sent. Check your connection and try again.');
-  }
-
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new QuestionTransitionError('UVTS received an invalid response.');
-  }
-  if (!response.ok) {
-    const envelope = body as ErrorEnvelope;
-    throw new QuestionTransitionError(
-      envelope.error?.message ?? 'The request could not be completed. Try again.',
-      envelope.error?.code,
-    );
-  }
-  return parseTestWorkspace(body);
+  return requestWorkspace({
+    path,
+    init: { method: 'POST' },
+    messages: {
+      network: 'The request could not be sent. Check your connection and try again.',
+      invalidResponse: 'UVTS received an invalid response.',
+      failed: 'The request could not be completed. Try again.',
+    },
+    createError: (message: string, detail?: ApiErrorDetail) =>
+      new QuestionTransitionError(message, detail?.code),
+  });
 }
 
 export function generateQuestions(testId: string): Promise<TestWorkspace> {

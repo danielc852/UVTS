@@ -12,7 +12,7 @@ from uvts_api.adapters.ai.openrouter import build_openrouter_model, is_openroute
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.question_agent import QuestionAgent
 from uvts_api.core.config import Settings
-from uvts_api.core.errors import AppError, test_not_found
+from uvts_api.core.errors import AppError
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.question_generator import GeneratedQuestionSet, QuestionGenerator
@@ -28,7 +28,9 @@ from uvts_api.schemas.workspace import (
     WorkspaceState,
 )
 from uvts_api.services.documents import delete_storage_after_commit, update_state
+from uvts_api.services.events import publish_test_change
 from uvts_api.services.question_generation import build_question_generation_input
+from uvts_api.services.tests import lock_test
 
 logger = logging.getLogger(__name__)
 QUESTION_AGENT_TEMPERATURE = 0.0
@@ -41,9 +43,7 @@ class GenerationOperation:
 
 
 def build_question_agent(settings: Settings) -> QuestionAgent:
-    return QuestionAgent(
-        build_openrouter_model(settings, temperature=QUESTION_AGENT_TEMPERATURE)
-    )
+    return QuestionAgent(build_openrouter_model(settings, temperature=QUESTION_AGENT_TEMPERATURE))
 
 
 async def begin_question_generation(
@@ -53,15 +53,7 @@ async def begin_question_generation(
     test: TestRun,
     settings: Settings,
 ) -> GenerationOperation:
-    locked_test = await db.scalar(
-        select(TestRun)
-        .where(TestRun.id == test.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if locked_test is None:
-        raise test_not_found()
-    test = locked_test
+    test = await lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     _ensure_generation_allowed(test, state)
     if not is_openrouter_configured(settings):
@@ -199,7 +191,7 @@ async def fail_question_generation(
 
 
 async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
-    test = await _lock_test(db, test.id)
+    test = await lock_test(db, test.id)
     state = WorkspaceState.model_validate(test.state)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
@@ -259,16 +251,12 @@ async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
             }
         ),
     )
-    test.status = (
-        TestStatus.READY.value if manual_ready else TestStatus.QUESTIONS_CONFIRMED.value
-    )
+    test.status = TestStatus.READY.value if manual_ready else TestStatus.QUESTIONS_CONFIRMED.value
     await db.commit()
 
 
-async def start_over(
-    *, db: AsyncSession, storage: DocumentStorage, test: TestRun
-) -> None:
-    test = await _lock_test(db, test.id)
+async def start_over(*, db: AsyncSession, storage: DocumentStorage, test: TestRun) -> None:
+    test = await lock_test(db, test.id)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
     state = WorkspaceState.model_validate(test.state)
@@ -286,9 +274,7 @@ async def start_over(
     for document in documents:
         await db.delete(document)
     await db.execute(
-        delete(QuestionEvaluationRecord).where(
-            QuestionEvaluationRecord.test_run_id == test.id
-        )
+        delete(QuestionEvaluationRecord).where(QuestionEvaluationRecord.test_run_id == test.id)
     )
     update_state(
         test,
@@ -313,17 +299,13 @@ async def start_over(
         await delete_storage_after_commit(storage, storage_key)
 
 
-async def publish_question_change(
-    notifications: StateNotifications, test_id: str
-) -> None:
-    try:
-        await notifications.publish(test_id)
-    except Exception:
-        logger.warning(
-            "Question state notification failed",
-            extra={"test_id": test_id},
-            exc_info=True,
-        )
+async def publish_question_change(notifications: StateNotifications, test_id: str) -> None:
+    await publish_test_change(
+        notifications,
+        test_id,
+        logger=logger,
+        failure_message="Question state notification failed",
+    )
 
 
 def _ensure_generation_allowed(test: TestRun, state: WorkspaceState) -> None:
@@ -367,9 +349,7 @@ def validate_generated_questions(
             raise ValueError("A generated question is empty.")
         key = " ".join(
             part
-            for part in re.split(
-                r"[^\w]+", unicodedata.normalize("NFKC", text).casefold()
-            )
+            for part in re.split(r"[^\w]+", unicodedata.normalize("NFKC", text).casefold())
             if part
         )
         if not key or key in normalized:
@@ -377,18 +357,6 @@ def validate_generated_questions(
         normalized.add(key)
         question_texts.append(text)
     return question_texts
-
-
-async def _lock_test(db: AsyncSession, test_id: str) -> TestRun:
-    test = await db.scalar(
-        select(TestRun)
-        .where(TestRun.id == test_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if test is None:
-        raise test_not_found()
-    return test
 
 
 def _operation_in_progress() -> AppError:
@@ -402,6 +370,5 @@ def _operation_in_progress() -> AppError:
 
 def _operation_is_active(test: TestRun, operation_id: str) -> bool:
     return bool(
-        test.active_operation_id == operation_id
-        and test.status == TestStatus.GENERATING.value
+        test.active_operation_id == operation_id and test.status == TestStatus.GENERATING.value
     )

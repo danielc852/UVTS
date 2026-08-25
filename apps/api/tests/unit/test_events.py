@@ -1,12 +1,14 @@
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock
 
 from fastapi import FastAPI
 from sqlalchemy import update
 
 from uvts_api.adapters.db.models import AnonymousSession
 from uvts_api.adapters.db.models import TestRun as DbTestRun
-from uvts_api.services.events import stream_test_events
+from uvts_api.services.events import publish_test_change, stream_test_events
 
 
 class OneUpdateNotification:
@@ -19,6 +21,32 @@ class OneUpdateNotification:
     async def listen(self, test_id: str) -> AsyncIterator[None]:
         await self._update_state(test_id)
         yield None
+
+
+class FailingNotification:
+    async def publish(self, test_id: str) -> None:
+        raise RuntimeError(test_id)
+
+    async def listen(self, test_id: str) -> AsyncIterator[None]:
+        del test_id
+        yield None
+
+
+async def test_publish_failure_is_logged_and_ignored() -> None:
+    logger = Mock(spec=logging.Logger)
+
+    await publish_test_change(
+        FailingNotification(),
+        "test-1",
+        logger=logger,
+        failure_message="State notification failed",
+    )
+
+    logger.warning.assert_called_once_with(
+        "State notification failed",
+        extra={"test_id": "test-1"},
+        exc_info=True,
+    )
 
 
 async def test_sse_refetches_persisted_state_after_notification(app: FastAPI) -> None:

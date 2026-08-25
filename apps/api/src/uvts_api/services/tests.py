@@ -47,3 +47,15 @@ async def get_owned_test(
     if test is None:
         raise test_not_found()
     return test
+
+
+async def lock_test(db: AsyncSession, test_id: str) -> TestRun:
+    test = await db.scalar(
+        select(TestRun)
+        .where(TestRun.id == test_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if test is None:
+        raise test_not_found()
+    return test
