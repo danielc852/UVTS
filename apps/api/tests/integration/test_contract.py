@@ -18,9 +18,22 @@ def test_openapi_exposes_the_manual_independent_transition_contract(app: FastAPI
     update_body = paths["/api/v1/tests/{test_id}/configuration"]["put"]["requestBody"][
         "content"
     ]
+    confirm_body = paths["/api/v1/tests/{test_id}/questions/confirm"]["post"]["requestBody"][
+        "content"
+    ]
     assert set(create_body) == {"multipart/form-data"}
     assert set(update_body) == {"multipart/form-data"}
+    assert set(confirm_body) == {"application/json"}
     assert "requestBody" not in paths["/api/v1/tests/{test_id}/questions"]["post"]
+
+    confirm_schema_name = confirm_body["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+    confirm_schema = schemas[confirm_schema_name]
+    assert confirm_schema["required"] == ["items"]
+    assert confirm_schema["properties"]["items"]["minItems"] == 1
+    assert confirm_schema["properties"]["items"]["maxItems"] == 15
+    item_schema_name = confirm_schema["properties"]["items"]["items"]["$ref"].rsplit("/", 1)[1]
+    assert set(schemas[item_schema_name]["properties"]) == {"id", "text"}
+    assert schemas[item_schema_name]["required"] == ["text"]
 
     create_schema_name = create_body["multipart/form-data"]["schema"]["$ref"].rsplit(
         "/", 1

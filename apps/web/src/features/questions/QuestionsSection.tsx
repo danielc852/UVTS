@@ -2,11 +2,13 @@ import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
+import { TextArea } from '@astryxdesign/core/TextArea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   confirmQuestions,
+  type ConfirmQuestionItem,
   generateQuestions,
   QuestionTransitionError,
   startOver,
@@ -21,17 +23,72 @@ interface QuestionsSectionProps {
 }
 
 type PendingAction = 'regenerate' | 'start-over';
-type QuestionAction = 'confirm' | PendingAction;
+type QuestionAction =
+  | { type: 'confirm'; items: ConfirmQuestionItem[] }
+  | { type: PendingAction };
 
 function runQuestionAction(testId: string, action: QuestionAction): Promise<TestWorkspace> {
-  switch (action) {
+  switch (action.type) {
     case 'confirm':
-      return confirmQuestions(testId);
+      return confirmQuestions(testId, action.items);
     case 'regenerate':
       return generateQuestions(testId);
     case 'start-over':
       return startOver(testId);
   }
+}
+
+interface EditableQuestion extends ConfirmQuestionItem {
+  clientId: string;
+}
+
+const maximumQuestions = 15;
+const emptyQuestions: TestWorkspace['questions'] = [];
+
+function createEditableQuestions(
+  questions: TestWorkspace['questions'],
+): EditableQuestion[] {
+  return questions.map((question) => ({
+    clientId: `existing-${question.id}`,
+    id: question.id,
+    text: question.text,
+  }));
+}
+
+function normalizeQuestion(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_]+/gu, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function questionErrors(questions: EditableQuestion[]): Array<string | undefined> {
+  const normalizedCounts = new Map<string, number>();
+  for (const question of questions) {
+    const normalized = normalizeQuestion(question.text);
+    if (normalized) normalizedCounts.set(normalized, (normalizedCounts.get(normalized) ?? 0) + 1);
+  }
+
+  return questions.map((question) => {
+    const normalized = normalizeQuestion(question.text);
+    if (!question.text.trim()) return 'Enter a question before confirming.';
+    if (!normalized) return 'Use at least one letter or number.';
+    if ((normalizedCounts.get(normalized) ?? 0) > 1) return 'Each question must be unique.';
+    return undefined;
+  });
+}
+
+function mergeQuestionErrors(
+  clientErrors: Array<string | undefined>,
+  error: Error | null,
+): Array<string | undefined> {
+  if (!(error instanceof QuestionTransitionError) || !error.fieldErrors) return clientErrors;
+  return clientErrors.map(
+    (clientError, index) =>
+      clientError ?? error.fieldErrors?.[`items.${index}.text`]?.[0],
+  );
 }
 
 function questionActionError(error: Error | null): string | undefined {
@@ -44,10 +101,27 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<PendingAction>();
   const questionSet = workspace.questionSet;
-  const questions = questionSet?.items ?? [];
+  const questions = questionSet?.items ?? emptyQuestions;
   const isConfirmed = questionSet?.status === 'confirmed';
   const isLegacy = questionSet?.source === 'legacy_manual_unknown';
   const isStale = questionSet?.configurationVersion !== workspace.configuration.version;
+  const [editableQuestions, setEditableQuestions] = useState(() => createEditableQuestions(questions));
+  const nextClientId = useRef(1);
+  const addedQuestionRef = useRef<HTMLTextAreaElement>(null);
+  const [addedQuestionClientId, setAddedQuestionClientId] = useState<string>();
+  useEffect(() => {
+    setEditableQuestions(createEditableQuestions(questions));
+    nextClientId.current = 1;
+    setAddedQuestionClientId(undefined);
+    // Question text can refresh while asynchronous regeneration is still using the old set.
+    // Reset local edits only when the workspace or question-set identity actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace.id, questionSet?.id]);
+  useEffect(() => {
+    if (addedQuestionClientId) addedQuestionRef.current?.focus();
+  }, [addedQuestionClientId]);
+  const clientValidationErrors = questionErrors(editableQuestions);
+  const isAtQuestionLimit = editableQuestions.length >= maximumQuestions;
   const actionMutation = useMutation({
     mutationFn: (action: QuestionAction) => runQuestionAction(workspace.id, action),
     onSuccess: (updated) => {
@@ -55,6 +129,8 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
       setPendingAction(undefined);
     },
   });
+  const validationErrors = mergeQuestionErrors(clientValidationErrors, actionMutation.error);
+  const hasValidationErrors = validationErrors.some(Boolean);
   const actionError = questionActionError(actionMutation.error);
   const isSubmitting = actionMutation.isPending;
 
@@ -109,29 +185,85 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
       ) : (
         <p>Review the complete draft. You can generate another draft until you confirm this set.</p>
       )}
-      <ol className="question-list">
-        {questions.map((question) => (
-          <li key={question.id}>
-            <p>{question.text}</p>
-          </li>
-        ))}
-      </ol>
-      <div className="action-row">
-        {isConfirmed ? (
-          <Button
-            label="Start over"
-            variant="secondary"
-            isDisabled={isSubmitting}
-            onClick={() => {
-              actionMutation.reset();
-              setPendingAction('start-over');
-            }}
-          />
-        ) : (
-          <>
+      {isConfirmed ? (
+        <>
+          <ol className="question-list">
+            {questions.map((question) => (
+              <li key={question.id}>
+                <p>{question.text}</p>
+              </li>
+            ))}
+          </ol>
+          <div className="action-row">
+            <Button
+              label="Start over"
+              variant="secondary"
+              isDisabled={isSubmitting}
+              onClick={() => {
+                actionMutation.reset();
+                setPendingAction('start-over');
+              }}
+            />
+          </div>
+        </>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (hasValidationErrors || editableQuestions.length === 0) return;
+            actionMutation.mutate({
+              type: 'confirm',
+              items: editableQuestions.map(({ id, text }) => ({ id, text: text.trim() })),
+            });
+          }}
+        >
+          <ol className="question-list question-editor-list">
+            {editableQuestions.map((question, index) => (
+              <li key={question.clientId}>
+                <TextArea
+                  ref={question.clientId === addedQuestionClientId ? addedQuestionRef : undefined}
+                  label={`Question ${index + 1}`}
+                  value={question.text}
+                  onChange={(text) => {
+                    actionMutation.reset();
+                    setEditableQuestions((current) =>
+                      current.map((item) =>
+                        item.clientId === question.clientId ? { ...item, text } : item,
+                      ),
+                    );
+                  }}
+                  rows={3}
+                  width="100%"
+                  isDisabled={state === 'working' || isSubmitting}
+                  disabledMessage="Wait for the current question action to finish."
+                  status={
+                    validationErrors[index]
+                      ? { type: 'error', message: validationErrors[index] }
+                      : undefined
+                  }
+                  statusVariant="detached"
+                />
+              </li>
+            ))}
+          </ol>
+          <div className="action-row question-editor-actions">
+            <Button
+              label="Add question"
+              variant="secondary"
+              type="button"
+              isDisabled={state === 'working' || isSubmitting || isAtQuestionLimit}
+              tooltip={isAtQuestionLimit ? 'You can confirm up to 15 questions.' : undefined}
+              onClick={() => {
+                actionMutation.reset();
+                const clientId = `new-${nextClientId.current++}`;
+                setEditableQuestions((current) => [...current, { clientId, text: '' }]);
+                setAddedQuestionClientId(clientId);
+              }}
+            />
             <Button
               label={isLegacy ? 'Generate product-only questions' : 'Generate again'}
               variant="secondary"
+              type="button"
               isDisabled={state === 'working' || isSubmitting}
               onClick={() => {
                 actionMutation.reset();
@@ -141,13 +273,20 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
             <Button
               label="Confirm questions"
               variant="primary"
-              isDisabled={state === 'working' || isSubmitting || isLegacy || isStale || questions.length === 0}
+              type="submit"
+              isDisabled={
+                state === 'working' ||
+                isSubmitting ||
+                isLegacy ||
+                isStale ||
+                editableQuestions.length === 0 ||
+                hasValidationErrors
+              }
               isLoading={isSubmitting && !pendingAction}
-              onClick={() => actionMutation.mutate('confirm')}
             />
-          </>
-        )}
-      </div>
+          </div>
+        </form>
+      )}
 
       <AlertDialog
         isOpen={Boolean(pendingAction)}
@@ -167,7 +306,7 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
         cancelLabel="Cancel"
         isActionLoading={isSubmitting}
         onAction={() => {
-          if (pendingAction) actionMutation.mutate(pendingAction);
+          if (pendingAction) actionMutation.mutate({ type: pendingAction });
         }}
       />
     </StageSection>

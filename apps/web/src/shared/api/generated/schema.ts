@@ -304,6 +304,18 @@ export interface components {
             /** Totalquestions */
             totalQuestions: number;
         };
+        /** ConfirmQuestionItem */
+        ConfirmQuestionItem: {
+            /** Id */
+            id?: string | null;
+            /** Text */
+            text: string;
+        };
+        /** ConfirmQuestionsRequest */
+        ConfirmQuestionsRequest: {
+            /** Items */
+            items: components["schemas"]["ConfirmQuestionItem"][];
+        };
         /** CoverageCounts */
         CoverageCounts: {
             /** Failed */
@@ -1347,7 +1359,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmQuestionsRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1385,13 +1401,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

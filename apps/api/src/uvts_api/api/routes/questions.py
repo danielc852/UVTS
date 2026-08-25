@@ -8,6 +8,7 @@ from uvts_api.api.dependencies import (
     RuntimeSettings,
 )
 from uvts_api.schemas.errors import ErrorResponse
+from uvts_api.schemas.questions import ConfirmQuestionsRequest
 from uvts_api.schemas.tests import TestResponse
 from uvts_api.services.questions import (
     begin_question_generation,
@@ -62,16 +63,18 @@ async def generate_test_questions(
         401: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
         409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
     },
 )
 async def confirm_test_questions(
     test_id: str,
     request: Request,
+    payload: ConfirmQuestionsRequest,
     current: CurrentSession,
     db: DatabaseSession,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id)
-    await confirm_questions(db=db, test=test)
+    await confirm_questions(db=db, test=test, items=payload.items)
     await publish_question_change(request.app.state.notifications, test.id)
     await db.refresh(test)
     return await to_test_response(db, test)

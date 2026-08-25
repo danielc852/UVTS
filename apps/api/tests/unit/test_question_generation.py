@@ -89,7 +89,10 @@ async def test_confirmation_does_not_trust_a_stale_manual_summary(
         test.status = "questions_ready"
         await db.commit()
 
-    confirmed = await client.post(f"/api/v1/tests/{test_id}/questions/confirm")
+    confirmed = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": [{"id": "q1", "text": "How do I start?"}]},
+    )
 
     assert confirmed.status_code == 200
     assert confirmed.json()["currentStage"] == "upload"

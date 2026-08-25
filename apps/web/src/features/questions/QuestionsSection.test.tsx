@@ -9,13 +9,22 @@ const questionApi = vi.hoisted(() => ({
   confirm: vi.fn(),
   generate: vi.fn(),
   startOver: vi.fn(),
+  QuestionTransitionError: class QuestionTransitionError extends Error {
+    constructor(
+      message: string,
+      readonly code = 'question_transition_failed',
+      readonly fieldErrors?: Record<string, string[]>,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock('./api', () => ({
   confirmQuestions: questionApi.confirm,
   generateQuestions: questionApi.generate,
   startOver: questionApi.startOver,
-  QuestionTransitionError: class QuestionTransitionError extends Error {},
+  QuestionTransitionError: questionApi.QuestionTransitionError,
 }));
 
 describe('QuestionsSection', () => {
@@ -35,7 +44,12 @@ describe('QuestionsSection', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Confirm questions' }));
 
-    expect(questionApi.confirm).toHaveBeenCalledWith('questions-ready');
+    expect(questionApi.confirm).toHaveBeenCalledWith(
+      'questions-ready',
+      expect.arrayContaining([
+        { id: 'q1', text: 'How do I complete the initial setup? (1)' },
+      ]),
+    );
     expect(await screen.findByRole('heading', { name: 'Upload manual' })).toBeInTheDocument();
   });
 
@@ -51,6 +65,82 @@ describe('QuestionsSection', () => {
     expect(questionApi.generate).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Generate another draft' }));
     expect(questionApi.generate).toHaveBeenCalledWith('questions-ready');
+  });
+
+  it('edits existing questions and appends trimmed questions for confirmation', async () => {
+    const user = userEvent.setup();
+    questionApi.confirm.mockResolvedValue(getWorkspaceFixture('upload-ready'));
+    renderApp('/tests/questions-ready');
+
+    const firstQuestion = await screen.findByRole('textbox', { name: 'Question 1' });
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, '  How do I pair the speaker?  ');
+    await user.click(screen.getByRole('button', { name: 'Add question' }));
+    const addedQuestion = screen.getByRole('textbox', { name: 'Question 10' });
+    expect(addedQuestion).toHaveFocus();
+    await user.type(addedQuestion, '  Is a reset reversible?  ');
+    await user.click(screen.getByRole('button', { name: 'Confirm questions' }));
+
+    const submittedItems = questionApi.confirm.mock.calls[0][1];
+    expect(submittedItems).toHaveLength(10);
+    expect(submittedItems[0]).toEqual({ id: 'q1', text: 'How do I pair the speaker?' });
+    expect(submittedItems[9]).toEqual({ id: undefined, text: 'Is a reset reversible?' });
+  });
+
+  it('shows inline errors for blank and duplicate questions', async () => {
+    const user = userEvent.setup();
+    renderApp('/tests/questions-ready');
+
+    await user.clear(await screen.findByRole('textbox', { name: 'Question 1' }));
+    expect(screen.getByText('Enter a question before confirming.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm questions' })).toBeDisabled();
+
+    await user.type(
+      screen.getByRole('textbox', { name: 'Question 1' }),
+      'CAN I CHANGE THE EXPORT FORMAT AFTER AUTOMATIC BACKUP IS ENABLED 2',
+    );
+    expect(screen.getAllByText('Each question must be unique.')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Confirm questions' })).toBeDisabled();
+  });
+
+  it('rejects punctuation-only questions and maps server validation to the matching field', async () => {
+    const user = userEvent.setup();
+    renderApp('/tests/questions-ready');
+
+    const firstQuestion = await screen.findByRole('textbox', { name: 'Question 1' });
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, '???');
+    expect(screen.getAllByText('Use at least one letter or number.').length).toBeGreaterThan(0);
+
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, 'Straße?');
+    questionApi.confirm.mockRejectedValue(
+      new questionApi.QuestionTransitionError(
+        'Questions must be unique.',
+        'question_review_invalid',
+        { 'items.0.text': ['Enter a unique question.'] },
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm questions' }));
+
+    expect((await screen.findAllByText('Enter a unique question.')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Confirm questions' })).toBeDisabled();
+  });
+
+  it('stops appending questions at the 15-question limit', async () => {
+    const user = userEvent.setup();
+    renderApp('/tests/questions-ready');
+
+    const addButton = await screen.findByRole('button', { name: 'Add question' });
+    for (let number = 10; number <= 15; number += 1) {
+      await user.click(addButton);
+      await user.type(screen.getByRole('textbox', { name: `Question ${number}` }), `Extra ${number}`);
+    }
+
+    expect(screen.getAllByRole('textbox')).toHaveLength(15);
+    expect(addButton).toHaveAttribute('aria-disabled', 'true');
+    await user.click(addButton);
+    expect(screen.getAllByRole('textbox')).toHaveLength(15);
   });
 
   it('states exactly what Start over preserves and removes', async () => {
@@ -82,7 +172,9 @@ describe('QuestionsSection', () => {
     renderApp('/tests/questions-generating');
 
     expect(await screen.findByRole('progressbar', { name: 'Generating questions' })).toBeInTheDocument();
-    expect(screen.getAllByText(/How do I complete the initial setup/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: 'Question 1' })).toHaveValue(
+      'How do I complete the initial setup? (1)',
+    );
     expect(screen.getByRole('button', { name: 'Generate again' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Confirm questions' })).toBeDisabled();
   });
@@ -92,10 +184,80 @@ describe('QuestionsSection', () => {
     questionApi.confirm.mockRejectedValue(new Error('network unavailable'));
     renderApp('/tests/questions-ready');
 
-    await user.click(await screen.findByRole('button', { name: 'Confirm questions' }));
+    const firstQuestion = await screen.findByRole('textbox', { name: 'Question 1' });
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, 'My edited question');
+    await user.click(screen.getByRole('button', { name: 'Confirm questions' }));
 
     expect(await screen.findByText(/question action could not be completed/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/How do I complete the initial setup/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: 'Question 1' })).toHaveValue('My edited question');
     expect(screen.getByRole('button', { name: 'Confirm questions' })).toBeEnabled();
+  });
+
+  it('keeps local edits when regeneration fails', async () => {
+    const user = userEvent.setup();
+    questionApi.generate.mockRejectedValue(new Error('network unavailable'));
+    renderApp('/tests/questions-ready');
+
+    const firstQuestion = await screen.findByRole('textbox', { name: 'Question 1' });
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, 'Keep this local edit');
+    await user.click(screen.getByRole('button', { name: 'Generate again' }));
+    await user.click(screen.getByRole('button', { name: 'Generate another draft' }));
+
+    expect(await screen.findByText(/question action could not be completed/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Question 1' })).toHaveValue('Keep this local edit');
+  });
+
+  it('keeps local edits while asynchronous regeneration still has the same draft', async () => {
+    const user = userEvent.setup();
+    const generating = getWorkspaceFixture('questions-ready');
+    if (!generating) throw new Error('Missing questions-ready fixture');
+    generating.status = 'generating';
+    questionApi.generate.mockResolvedValue(generating);
+    renderApp('/tests/questions-ready');
+
+    const firstQuestion = await screen.findByRole('textbox', { name: 'Question 1' });
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, 'Keep this edit until a new set arrives');
+    await user.click(screen.getByRole('button', { name: 'Generate again' }));
+    await user.click(screen.getByRole('button', { name: 'Generate another draft' }));
+
+    expect(await screen.findByRole('progressbar', { name: 'Generating questions' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Question 1' })).toHaveValue(
+      'Keep this edit until a new set arrives',
+    );
+  });
+
+  it('replaces local edits after successful regeneration', async () => {
+    const user = userEvent.setup();
+    const regenerated = getWorkspaceFixture('questions-ready');
+    if (!regenerated?.questionSet) throw new Error('Missing questions-ready fixture');
+    regenerated.questionSet.id = 'question-set-2';
+    regenerated.questionSet.items[0].text = 'What changed in the regenerated draft?';
+    regenerated.questions = regenerated.questionSet.items;
+    questionApi.generate.mockResolvedValue(regenerated);
+    renderApp('/tests/questions-ready');
+
+    const firstQuestion = await screen.findByRole('textbox', { name: 'Question 1' });
+    await user.clear(firstQuestion);
+    await user.type(firstQuestion, 'Discard this edit after success');
+    await user.click(screen.getByRole('button', { name: 'Generate again' }));
+    await user.click(screen.getByRole('button', { name: 'Generate another draft' }));
+
+    expect(await screen.findByRole('textbox', { name: 'Question 1' })).toHaveValue(
+      'What changed in the regenerated draft?',
+    );
+  });
+
+  it('keeps confirmed questions read-only', async () => {
+    renderApp('/tests/upload-ready');
+    await screen.findByRole('heading', { name: 'Upload manual' });
+    await userEvent.setup().click(
+      screen.getByRole('button', { name: 'Review and confirm questionsComplete' }),
+    );
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByText('How do I complete the initial setup? (1)')).toBeInTheDocument();
   });
 });

@@ -354,7 +354,8 @@ class WorkspaceState(ApiModel):
                     "A product-context question set needs a configuration version."
                 )
             if (
-                question_set.configuration_version == self.configuration.version
+                question_set.status == QuestionSetStatus.DRAFT
+                and question_set.configuration_version == self.configuration.version
                 and len(question_set.items) != self.configuration.total_questions
             ):
                 raise ValueError(

@@ -17,6 +17,7 @@ from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.question_generator import GeneratedQuestionSet, QuestionGenerator
 from uvts_api.ports.storage import DocumentStorage
+from uvts_api.schemas.questions import ConfirmQuestionItem
 from uvts_api.schemas.workspace import (
     ManualStatus,
     Question,
@@ -191,7 +192,12 @@ async def fail_question_generation(
     await publish_question_change(notifications, test.id)
 
 
-async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
+async def confirm_questions(
+    *,
+    db: AsyncSession,
+    test: TestRun,
+    items: list[ConfirmQuestionItem],
+) -> None:
     test = await lock_test(db, test.id)
     state = await load_workspace_state(db, test)
     if test.active_operation_id is not None:
@@ -224,6 +230,8 @@ async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
             message="Generate a new set after the latest Product setup changes.",
         )
 
+    reviewed_questions = _validate_reviewed_questions(question_set, items)
+
     ready_manual = None
     if state.manual is not None and state.manual.status == ManualStatus.READY:
         ready_manual = await db.scalar(
@@ -246,6 +254,7 @@ async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
                     update={
                         "status": QuestionSetStatus.CONFIRMED,
                         "confirmed_at": datetime.now(UTC),
+                        "items": reviewed_questions,
                     }
                 ),
                 "error": None,
@@ -348,16 +357,90 @@ def validate_generated_questions(
         text = item.text.strip()
         if not text:
             raise ValueError("A generated question is empty.")
-        key = " ".join(
-            part
-            for part in re.split(r"[^\w]+", unicodedata.normalize("NFKC", text).casefold())
-            if part
-        )
+        key = _normalized_question_key(text)
         if not key or key in normalized:
             raise ValueError("The generated questions are not unique.")
         normalized.add(key)
         question_texts.append(text)
     return question_texts
+
+
+def _validate_reviewed_questions(
+    question_set: QuestionSet,
+    submitted_items: list[ConfirmQuestionItem],
+) -> list[Question]:
+    """Build a reviewed set without changing the persisted draft on invalid input."""
+
+    if not 1 <= len(submitted_items) <= 15:
+        raise _question_review_error(
+            "Submit between 1 and 15 questions.",
+            field_errors={"items": ["Submit between 1 and 15 questions."]},
+        )
+
+    original_by_id = {question.id: question for question in question_set.items}
+    seen_ids: set[str] = set()
+    seen_texts: set[str] = set()
+    reviewed: list[Question] = []
+
+    for index, submitted in enumerate(submitted_items):
+        field_prefix = f"items.{index}"
+        question_id = submitted.id
+        if question_id is not None:
+            if question_id not in original_by_id:
+                raise _question_review_error(
+                    "The reviewed questions contain an unknown question.",
+                    field_errors={
+                        f"{field_prefix}.id": ["This question is not in the current draft."]
+                    },
+                )
+            if question_id in seen_ids:
+                raise _question_review_error(
+                    "Each generated question must appear exactly once.",
+                    field_errors={f"{field_prefix}.id": ["This question appears more than once."]},
+                )
+            seen_ids.add(question_id)
+
+        text = submitted.text.strip()
+        if not text:
+            raise _question_review_error(
+                "Question text must not be blank.",
+                field_errors={f"{field_prefix}.text": ["Enter a question."]},
+            )
+        text_key = _normalized_question_key(text)
+        if not text_key or text_key in seen_texts:
+            raise _question_review_error(
+                "Questions must be unique.",
+                field_errors={f"{field_prefix}.text": ["Enter a unique question."]},
+            )
+        seen_texts.add(text_key)
+        reviewed.append(Question(id=question_id or str(uuid4()), text=text))
+
+    missing_ids = set(original_by_id) - seen_ids
+    if missing_ids:
+        raise _question_review_error(
+            "Every generated question must remain in the reviewed set.",
+            field_errors={"items": ["Keep every generated question before confirming."]},
+        )
+    return reviewed
+
+
+def _normalized_question_key(text: str) -> str:
+    return " ".join(
+        part for part in re.split(r"[^\w]+", unicodedata.normalize("NFKC", text).casefold()) if part
+    )
+
+
+def _question_review_error(
+    message: str,
+    *,
+    field_errors: dict[str, list[str]],
+) -> AppError:
+    return AppError(
+        status_code=422,
+        code="question_review_invalid",
+        message=message,
+        field_errors=field_errors,
+    )
 
 
 def _operation_in_progress() -> AppError:

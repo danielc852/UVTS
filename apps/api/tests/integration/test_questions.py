@@ -1,5 +1,6 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import cast
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
@@ -70,6 +71,11 @@ async def configured_test(client: AsyncClient) -> str:
     )
     assert response.status_code == 201
     return str(response.json()["id"])
+
+
+def review_items(question_set: dict[str, object]) -> list[dict[str, str]]:
+    items = cast(list[dict[str, str]], question_set["items"])
+    return [{"id": item["id"], "text": item["text"]} for item in items]
 
 
 async def test_generation_needs_no_manual_and_persists_a_draft_set(
@@ -195,9 +201,13 @@ async def test_confirmation_is_persisted_and_locks_setup_and_generation(
 ) -> None:
     client, _, _ = generation_client
     test_id = await configured_test(client)
-    await client.post(f"/api/v1/tests/{test_id}/questions")
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    items = review_items(generated.json()["questionSet"])
 
-    confirmed = await client.post(f"/api/v1/tests/{test_id}/questions/confirm")
+    confirmed = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": items},
+    )
 
     assert confirmed.status_code == 200
     body = confirmed.json()
@@ -212,6 +222,158 @@ async def test_confirmation_is_persisted_and_locks_setup_and_generation(
     assert generation_locked.json()["error"]["code"] == "question_set_confirmed"
     assert setup_locked.status_code == 409
     assert setup_locked.json()["error"]["code"] == "configuration_locked"
+    reconfirm = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": items},
+    )
+    assert reconfirm.status_code == 409
+    assert reconfirm.json()["error"]["code"] == "question_set_confirmed"
+
+
+async def test_confirmation_applies_edits_and_additions_in_submitted_order(
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+) -> None:
+    client, _, _ = generation_client
+    test_id = await configured_test(client)
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    draft = generated.json()["questionSet"]
+    original = review_items(draft)
+    submitted = [
+        {"id": original[1]["id"], "text": "  Edited second question?  "},
+        {"id": original[0]["id"], "text": original[0]["text"]},
+        {"text": "  What should I do after setup?  "},
+        {"id": original[2]["id"], "text": original[2]["text"]},
+    ]
+
+    confirmed = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": submitted},
+    )
+
+    assert confirmed.status_code == 200
+    items = confirmed.json()["questionSet"]["items"]
+    assert [item["text"] for item in items] == [
+        "Edited second question?",
+        original[0]["text"],
+        "What should I do after setup?",
+        original[2]["text"],
+    ]
+    assert [items[0]["id"], items[1]["id"], items[3]["id"]] == [
+        original[1]["id"],
+        original[0]["id"],
+        original[2]["id"],
+    ]
+    assert items[2]["id"] not in {item["id"] for item in original}
+    UUID(items[2]["id"])
+
+
+@pytest.mark.parametrize(
+    "invalid_items",
+    [
+        lambda items: [*items[:1], {**items[1], "text": "   "}, *items[2:]],
+        lambda items: [*items, {"text": f"  {items[0]['text'].upper()}  "}],
+        lambda items: [{**items[0], "id": "unknown-question"}, *items[1:]],
+        lambda items: [items[0], items[0], *items[1:]],
+        lambda items: items[:-1],
+    ],
+    ids=["blank", "normalized-duplicate", "unknown-id", "duplicate-id", "missing-id"],
+)
+async def test_invalid_review_is_rejected_without_changing_the_draft(
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+    invalid_items: Callable[
+        [list[dict[str, str]]],
+        list[dict[str, str]],
+    ],
+) -> None:
+    client, _, notifications = generation_client
+    test_id = await configured_test(client)
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    before = generated.json()
+    items = review_items(before["questionSet"])
+    notifications.published.clear()
+
+    response = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": invalid_items(items)},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "question_review_invalid"
+    current = (await client.get(f"/api/v1/tests/{test_id}")).json()
+    assert current["questionSet"] == before["questionSet"]
+    assert current["status"] == before["status"]
+    assert current["stateVersion"] == before["stateVersion"]
+    assert notifications.published == []
+
+
+async def test_confirmation_enforces_the_fifteen_question_limit(
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+) -> None:
+    client, _, _ = generation_client
+    test_id = await configured_test(client)
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    draft = generated.json()
+    items = review_items(draft["questionSet"])
+    fifteen = [*items, *({"text": f"Added question {number}?"} for number in range(12))]
+
+    accepted = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": fifteen},
+    )
+
+    assert accepted.status_code == 200
+    assert len(accepted.json()["questionSet"]["items"]) == 15
+
+    other_test_id = await configured_test(client)
+    other_generated = await client.post(f"/api/v1/tests/{other_test_id}/questions")
+    other_before = other_generated.json()
+    other_items = review_items(other_before["questionSet"])
+    sixteen = [
+        *other_items,
+        *({"text": f"Extra question {number}?"} for number in range(13)),
+    ]
+    rejected = await client.post(
+        f"/api/v1/tests/{other_test_id}/questions/confirm",
+        json={"items": sixteen},
+    )
+
+    assert rejected.status_code == 422
+    assert rejected.json()["error"]["code"] == "validation_error"
+    current = (await client.get(f"/api/v1/tests/{other_test_id}")).json()
+    assert current["questionSet"] == other_before["questionSet"]
+
+
+async def test_confirmation_rejects_a_stale_draft_without_changing_it(
+    app: FastAPI,
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+) -> None:
+    client, _, notifications = generation_client
+    test_id = await configured_test(client)
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    items = review_items(generated.json()["questionSet"])
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        state = dict(test.state)
+        configuration = dict(state["configuration"])
+        configuration["version"] += 1
+        state["configuration"] = configuration
+        test.state = state
+        await db.commit()
+    before = (await client.get(f"/api/v1/tests/{test_id}")).json()
+    notifications.published.clear()
+
+    response = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": items},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "question_set_stale"
+    current = (await client.get(f"/api/v1/tests/{test_id}")).json()
+    assert current["questionSet"] == before["questionSet"]
+    assert current["stateVersion"] == before["stateVersion"]
+    assert notifications.published == []
 
 
 async def test_generation_is_owned_and_rejects_parallel_work(
