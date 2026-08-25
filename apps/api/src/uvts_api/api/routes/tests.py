@@ -20,7 +20,7 @@ async def get_test(
     current: CurrentSession,
     db: DatabaseSession,
 ) -> TestResponse:
-    return to_test_response(await get_owned_test(db, test_id, current.id))
+    return await to_test_response(db, await get_owned_test(db, test_id, current.id))
 
 
 @router.get(

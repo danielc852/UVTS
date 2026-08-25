@@ -32,10 +32,10 @@ from uvts_api.schemas.workspace import (
     WorkspaceError,
     WorkspaceState,
 )
-from uvts_api.services.documents import update_state
 from uvts_api.services.events import publish_test_change
 from uvts_api.services.question_generation import build_question_generation_input
 from uvts_api.services.tests import lock_test
+from uvts_api.services.workspace import load_workspace_state, update_state
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ async def start_evaluation(
     agent_settings: Mapping[str, object],
 ) -> tuple[str, list[str]]:
     test = await lock_test(db, test.id)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
     if state.manual_upload is not None:
@@ -142,7 +142,7 @@ async def start_question_retry(
     question_id: str,
 ) -> tuple[str, list[str]]:
     test = await lock_test(db, test.id)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     _ensure_no_active_operation(test)
     _ensure_current_evaluation_source(state)
     if question_id not in {question.id for question in state.questions}:
@@ -179,7 +179,7 @@ async def start_failed_retries(
     test: TestRun,
 ) -> tuple[str, list[str]]:
     test = await lock_test(db, test.id)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     _ensure_no_active_operation(test)
     source = _ensure_current_evaluation_source(state)
     records_by_id = {
@@ -219,7 +219,7 @@ async def start_report_retry(
     test: TestRun,
 ) -> tuple[str, list[str]]:
     test = await lock_test(db, test.id)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     _ensure_no_active_operation(test)
     _ensure_current_evaluation_source(state)
     if state.report is None or state.error is None or state.error.code != "report_synthesis_failed":
@@ -348,7 +348,7 @@ async def fail_evaluation_dispatch(
     await db.refresh(test)
     if test.active_operation_id != operation_id:
         return
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     source = _ensure_current_evaluation_source(state)
     report: Report | None
     if question_ids:
@@ -465,7 +465,7 @@ async def _operation_context(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return None
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     source = _ensure_current_evaluation_source(state)
     question_set = state.question_set
     assert question_set is not None
@@ -511,7 +511,7 @@ async def _active_test(
     await db.refresh(test)
     if test.active_operation_id != operation_id:
         return None
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     if state.current_stage not in {WorkflowStage.EVALUATION, WorkflowStage.REPORT}:
         return None
     return test
@@ -641,7 +641,7 @@ async def _active_record(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return None
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     record = await _record_for_question(db, state, test_id, question_id)
     return test, record
 
@@ -655,7 +655,8 @@ async def _commit_evaluation_item(
     status: EvaluationStatus,
     error: str | None,
 ) -> None:
-    _update_evaluation_item(
+    await _update_evaluation_item(
+        db,
         test,
         question_id=question_id,
         status=status,
@@ -665,14 +666,15 @@ async def _commit_evaluation_item(
     await publish_evaluation_change(notifications, test.id)
 
 
-def _update_evaluation_item(
+async def _update_evaluation_item(
+    db: AsyncSession,
     test: TestRun,
     *,
     question_id: str,
     status: EvaluationStatus,
     error: str | None,
 ) -> None:
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     update_state(
         test,
         state.model_copy(
@@ -699,7 +701,7 @@ async def _finalize_report(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     source = _ensure_current_evaluation_source(state)
     records = list(
         (
@@ -732,7 +734,7 @@ async def _finalize_report(
         test = await _active_test(db, test_id, operation_id)
         if test is None:
             return
-        state = WorkspaceState.model_validate(test.state)
+        state = await load_workspace_state(db, test)
         test.active_operation_id = None
         test.status = TestStatus.INCOMPLETE.value
         update_state(
@@ -756,7 +758,7 @@ async def _finalize_report(
     test = await _active_test(db, test_id, operation_id)
     if test is None:
         return
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     if state.evaluation_source is None:
         return
     report = build_report(

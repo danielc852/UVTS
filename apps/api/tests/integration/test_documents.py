@@ -18,6 +18,11 @@ from uvts_api.schemas.workspace import (
     WorkflowStage,
     WorkspaceState,
 )
+from uvts_api.services.workspace import (
+    RELATIONAL_FACTS_KEY,
+    RELATIONAL_FACTS_VERSION,
+    load_workspace_state,
+)
 
 
 async def create_confirmed_test(app: FastAPI, client: AsyncClient) -> tuple[str, dict[str, object]]:
@@ -39,7 +44,9 @@ async def create_confirmed_test(app: FastAPI, client: AsyncClient) -> tuple[str,
         state = state.model_copy(
             update={"current_stage": WorkflowStage.UPLOAD, "question_set": question_set}
         )
-        test.state = state.model_dump(mode="json", by_alias=True)
+        persisted = state.model_dump(mode="json", by_alias=True)
+        persisted[RELATIONAL_FACTS_KEY] = RELATIONAL_FACTS_VERSION
+        test.state = persisted
         test.status = "questions_confirmed"
         await db.commit()
     return test_id, created.json()["configuration"]
@@ -57,7 +64,7 @@ async def seed_report_lineage(app: FastAPI, test_id: str) -> dict[str, object]:
     async with app.state.session_factory() as db:
         test = await db.get(RunModel, test_id)
         assert test is not None
-        state = WorkspaceState.model_validate(test.state)
+        state = await load_workspace_state(db, test)
         assert state.question_set is not None and state.manual is not None
         source = {
             "questionSetId": state.question_set.id,
@@ -85,7 +92,9 @@ async def seed_report_lineage(app: FastAPI, test_id: str) -> dict[str, object]:
             "recommendations": [],
             "followUpQuestions": [],
         }
-        test.state = WorkspaceState.model_validate(raw).model_dump(mode="json", by_alias=True)
+        persisted = WorkspaceState.model_validate(raw).model_dump(mode="json", by_alias=True)
+        persisted[RELATIONAL_FACTS_KEY] = RELATIONAL_FACTS_VERSION
+        test.state = persisted
         test.status = "complete"
         test.agent_settings = {
             "questionAgent": {"model": "question-model"},
@@ -120,6 +129,16 @@ async def test_attach_view_range_and_remove_manual_preserves_confirmed_questions
     assert body["status"] == "ready"
     assert body["manual"]["pageCount"] == 2
     assert body["questionSet"]["status"] == "confirmed"
+    async with app.state.session_factory() as db:
+        test = await db.get(RunModel, test_id)
+        assert test is not None
+        assert test.state[RELATIONAL_FACTS_KEY] == RELATIONAL_FACTS_VERSION
+        assert "manual" not in test.state
+        assert "manualUpload" not in test.state
+        assert "evaluation" not in test.state
+        state = await load_workspace_state(db, test)
+        assert state.manual is not None
+        assert state.manual.page_count == 2
 
     content = await client.get(f"/api/v1/tests/{test_id}/manual/content")
     partial = await client.get(

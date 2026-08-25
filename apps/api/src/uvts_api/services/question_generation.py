@@ -11,7 +11,7 @@ from uvts_api.ports.question_generator import (
     QuestionGenerationInput,
 )
 from uvts_api.ports.storage import DocumentStorage
-from uvts_api.schemas.workspace import WorkspaceState
+from uvts_api.services.workspace import load_workspace_state
 
 
 async def build_question_generation_input(
@@ -20,7 +20,7 @@ async def build_question_generation_input(
     storage: DocumentStorage,
     test: TestRun,
 ) -> QuestionGenerationInput:
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     configuration = state.configuration
     image = configuration.product_image
     description = configuration.product_description.strip()

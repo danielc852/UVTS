@@ -52,7 +52,7 @@ async def generate_test_questions(
         operation_id=operation.operation_id,
     )
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 @router.post(
@@ -74,7 +74,7 @@ async def confirm_test_questions(
     await confirm_questions(db=db, test=test)
     await publish_question_change(request.app.state.notifications, test.id)
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 @router.post(
@@ -97,4 +97,4 @@ async def start_test_over(
     await start_over(db=db, storage=storage, test=test)
     await publish_question_change(request.app.state.notifications, test.id)
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)

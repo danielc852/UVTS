@@ -27,10 +27,11 @@ from uvts_api.schemas.workspace import (
     WorkspaceError,
     WorkspaceState,
 )
-from uvts_api.services.documents import delete_storage_after_commit, update_state
+from uvts_api.services.documents import delete_storage_after_commit
 from uvts_api.services.events import publish_test_change
 from uvts_api.services.question_generation import build_question_generation_input
 from uvts_api.services.tests import lock_test
+from uvts_api.services.workspace import load_workspace_state, update_state
 
 logger = logging.getLogger(__name__)
 QUESTION_AGENT_TEMPERATURE = 0.0
@@ -54,7 +55,7 @@ async def begin_question_generation(
     settings: Settings,
 ) -> GenerationOperation:
     test = await lock_test(db, test.id)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     _ensure_generation_allowed(test, state)
     if not is_openrouter_configured(settings):
         raise AppError(
@@ -118,7 +119,7 @@ async def process_question_generation(
     await db.refresh(test)
     if not _operation_is_active(test, operation_id):
         return
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     question_set = QuestionSet(
         id=str(uuid4()),
         status=QuestionSetStatus.DRAFT,
@@ -159,7 +160,7 @@ async def fail_question_generation(
     test = await db.get(TestRun, test_id)
     if test is None or not _operation_is_active(test, operation_id):
         return
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     error_stage = WorkflowStage.QUESTIONS if state.question_set else WorkflowStage.CONFIGURATION
     update_state(
         test,
@@ -192,7 +193,7 @@ async def fail_question_generation(
 
 async def confirm_questions(*, db: AsyncSession, test: TestRun) -> None:
     test = await lock_test(db, test.id)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
     question_set = state.question_set
@@ -259,7 +260,7 @@ async def start_over(*, db: AsyncSession, storage: DocumentStorage, test: TestRu
     test = await lock_test(db, test.id)
     if test.active_operation_id is not None:
         raise _operation_in_progress()
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     documents = list(
         (
             await db.scalars(

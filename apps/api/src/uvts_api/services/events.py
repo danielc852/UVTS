@@ -48,7 +48,7 @@ async def stream_test_events(
             test = await get_owned_test(db, test_id, owner_session_id)
             if test.state_version <= last_version:
                 return None
-            response = to_test_response(test)
+            response = await to_test_response(db, test)
             last_version = test.state_version
             return encode_sse(
                 event="test.updated",

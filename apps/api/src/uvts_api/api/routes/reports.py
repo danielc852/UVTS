@@ -42,4 +42,4 @@ async def retry_report(
         question_ids=question_ids,
     )
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)

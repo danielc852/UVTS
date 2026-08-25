@@ -92,6 +92,45 @@ def test_manual_independent_migration_upgrades_state_and_evaluation_lineage(
             "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("record-1", "test-1", "q1", "complete", "{}", None, 1, now, now),
         )
+        connection.execute(
+            "INSERT INTO test_runs "
+            "(id, owner_session_id, status, state_version, state, active_operation_id, "
+            "agent_settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "test-2",
+                "owner-1",
+                "complete",
+                1,
+                json.dumps(legacy_state),
+                None,
+                "{}",
+                now,
+                now,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO documents "
+            "(id, test_run_id, role, filename, storage_key, status, page_count, pages, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "manual-1",
+                "test-2",
+                "active",
+                "legacy.pdf",
+                "test-2.pdf",
+                "ready",
+                1,
+                "[]",
+                now,
+                now,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO question_evaluation_records "
+            "(id, test_run_id, question_id, status, result, error, attempt, created_at, "
+            "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("record-2", "test-2", "q1", "complete", "{}", None, 1, now, now),
+        )
         connection.commit()
 
     command.upgrade(config, "head")
@@ -106,6 +145,11 @@ def test_manual_independent_migration_upgrades_state_and_evaluation_lineage(
             "SELECT question_set_id, manual_id FROM question_evaluation_records "
             "WHERE id = 'record-1'"
         ).fetchone()
+        relational_state = json.loads(
+            connection.execute(
+                "SELECT state FROM test_runs WHERE id = 'test-2'"
+            ).fetchone()[0]
+        )
 
     question_set = stored_state["questionSet"]
     assert stored_state["schemaVersion"] == 2
@@ -121,5 +165,22 @@ def test_manual_independent_migration_upgrades_state_and_evaluation_lineage(
     }
     assert stored_state["report"]["source"] == stored_state["evaluationSource"]
     assert source_ids == (question_set["id"], "manual-1")
+    assert relational_state["relationalFactsVersion"] == 1
+    assert "manual" not in relational_state
+    assert "manualUpload" not in relational_state
+    assert "evaluation" not in relational_state
+
+    command.downgrade(config, "20260824_0004")
+    with sqlite3.connect(database_path) as connection:
+        restored_state = json.loads(
+            connection.execute(
+                "SELECT state FROM test_runs WHERE id = 'test-2'"
+            ).fetchone()[0]
+        )
+    assert "relationalFactsVersion" not in restored_state
+    assert restored_state["manual"]["id"] == "manual-1"
+    assert restored_state["evaluation"] == [
+        {"questionId": "q1", "status": "complete", "error": None}
+    ]
 
     get_settings.cache_clear()

@@ -55,7 +55,7 @@ async def evaluate_questions(
         question_ids=question_ids,
     )
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 @router.post(
@@ -85,7 +85,7 @@ async def retry_question(
         question_ids=question_ids,
     )
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 @router.post(
@@ -110,7 +110,7 @@ async def retry_failed_questions(
         question_ids=question_ids,
     )
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 def _recorded_agent_settings(settings: Settings) -> dict[str, object]:

@@ -260,6 +260,7 @@ def upgrade_workspace_state(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
     raw = dict(value)
+    raw.pop("relationalFactsVersion", None)
     declared_version = raw.get("schemaVersion", raw.get("schema_version"))
     if declared_version not in {None, 1, 2}:
         return raw

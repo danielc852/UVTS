@@ -1,22 +1,14 @@
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import TestRun
-from uvts_api.core.errors import AppError, test_not_found
+from uvts_api.core.errors import test_not_found
 from uvts_api.schemas.tests import TestResponse
-from uvts_api.schemas.workspace import WorkspaceState
+from uvts_api.services.workspace import load_workspace_state
 
 
-def to_test_response(test: TestRun) -> TestResponse:
-    try:
-        state = WorkspaceState.model_validate(test.state)
-    except ValidationError as exc:
-        raise AppError(
-            status_code=409,
-            code="workspace_state_incompatible",
-            message="This saved test cannot be opened safely. Contact support before changing it.",
-        ) from exc
+async def to_test_response(db: AsyncSession, test: TestRun) -> TestResponse:
+    state = await load_workspace_state(db, test)
     return TestResponse.model_validate(
         {
             **state.model_dump(mode="json", by_alias=True),

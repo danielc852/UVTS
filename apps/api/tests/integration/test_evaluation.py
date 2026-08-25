@@ -32,6 +32,11 @@ from uvts_api.schemas.workspace import (
     WorkspaceState,
 )
 from uvts_api.services.evaluation import process_evaluation_operation, start_evaluation
+from uvts_api.services.workspace import (
+    RELATIONAL_FACTS_KEY,
+    RELATIONAL_FACTS_VERSION,
+    load_workspace_state,
+)
 
 
 class FakeStructuredModel:
@@ -112,10 +117,12 @@ async def seed_ready_test(
                 ),
             }
         )
+        persisted = state.model_dump(mode="json", by_alias=True)
+        persisted[RELATIONAL_FACTS_KEY] = RELATIONAL_FACTS_VERSION
         test = RunModel(
             owner_session_id=owner.id,
             status=RunStatus.READY.value,
-            state=state.model_dump(mode="json", by_alias=True),
+            state=persisted,
         )
         db.add(test)
         await db.flush()
@@ -376,7 +383,9 @@ async def test_stale_operation_cannot_write_a_model_result(
         record = (await db.scalars(select(QuestionEvaluationRecord))).one()
         assert test is not None
         assert test.active_operation_id == "new-operation"
-        assert test.state["evaluation"][0]["status"] == "checking"
+        assert "evaluation" not in test.state
+        state = await load_workspace_state(db, test)
+        assert state.evaluation[0].status.value == "checking"
         assert test.state["report"] is None
         assert record.status == "checking"
         assert record.result is None

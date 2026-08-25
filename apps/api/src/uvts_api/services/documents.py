@@ -18,9 +18,9 @@ from uvts_api.schemas.workspace import (
     ManualUploadStatus,
     WorkflowStage,
     WorkspaceError,
-    WorkspaceState,
 )
 from uvts_api.services.events import publish_test_change
+from uvts_api.services.workspace import load_workspace_state, update_state
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +110,6 @@ async def delete_storage_after_commit(storage: DocumentStorage, storage_key: str
                 )
 
 
-def update_state(test: TestRun, state: WorkspaceState) -> None:
-    test.state = state.model_dump(mode="json", by_alias=True)
-    test.state_version += 1
-
-
 async def process_pending_document(
     *,
     db: AsyncSession,
@@ -128,7 +123,7 @@ async def process_pending_document(
     test, document = locked
 
     document.status = ManualUploadStatus.PROCESSING.value
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     update_state(
         test,
         state.model_copy(
@@ -211,6 +206,7 @@ async def promote_pending_document(
     if locked is None:
         return None
     test, document = locked
+    state = await load_workspace_state(db, test)
     active = await db.scalar(
         select(Document).where(
             Document.test_run_id == test.id,
@@ -230,7 +226,6 @@ async def promote_pending_document(
     document.status = ManualStatus.READY.value
     document.page_count = processed.page_count
     document.pages = processed.pages
-    state = WorkspaceState.model_validate(test.state)
     update_state(
         test,
         state.model_copy(
@@ -277,7 +272,7 @@ async def fail_pending_document(
             Document.role == "active",
         )
     )
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     await db.delete(document)
     update_state(
         test,

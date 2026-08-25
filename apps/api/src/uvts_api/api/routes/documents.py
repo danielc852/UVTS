@@ -24,14 +24,13 @@ from uvts_api.schemas.workspace import (
     ManualUploadStatus,
     QuestionSetStatus,
     WorkflowStage,
-    WorkspaceState,
 )
 from uvts_api.services.documents import (
     delete_storage_after_commit,
     publish_change,
-    update_state,
 )
 from uvts_api.services.tests import get_owned_test, to_test_response
+from uvts_api.services.workspace import load_workspace_state, update_state
 
 router = APIRouter(prefix="/tests", tags=["documents"])
 
@@ -96,7 +95,7 @@ async def replace_manual(
     file: Annotated[UploadFile, File()],
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id, for_update=True)
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     if state.question_set is None or state.question_set.status != QuestionSetStatus.CONFIRMED:
         raise AppError(
             status_code=409,
@@ -159,7 +158,7 @@ async def replace_manual(
     await publish_change(request.app.state.notifications, test.id)
     await operation_dispatcher.process_document(document.id)
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 @router.get(
@@ -219,6 +218,7 @@ async def delete_manual(
             message="Wait for the current test work to finish before deleting the manual.",
             retryable=True,
         )
+    state = await load_workspace_state(db, test)
     documents = list(
         (
             await db.scalars(
@@ -239,7 +239,6 @@ async def delete_manual(
             QuestionEvaluationRecord.test_run_id == test.id
         )
     )
-    state = WorkspaceState.model_validate(test.state)
     questions_confirmed = (
         state.question_set is not None
         and state.question_set.status == QuestionSetStatus.CONFIRMED
@@ -276,4 +275,4 @@ async def delete_manual(
     for storage_key in storage_keys:
         await delete_storage_after_commit(storage, storage_key)
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)

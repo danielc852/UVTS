@@ -18,14 +18,17 @@ from uvts_api.schemas.workspace import (
     QuestionSetStatus,
     TestConfiguration,
     WorkflowStage,
-    WorkspaceState,
 )
 from uvts_api.services.documents import (
     delete_storage_after_commit,
     publish_change,
-    update_state,
 )
 from uvts_api.services.tests import get_owned_test, to_test_response
+from uvts_api.services.workspace import (
+    load_workspace_state,
+    new_workspace_state,
+    update_state,
+)
 
 router = APIRouter(prefix="/tests", tags=["configuration"])
 
@@ -107,7 +110,7 @@ async def persist_configuration(
     product_image: UploadFile | None,
     require_image: bool,
 ) -> None:
-    state = WorkspaceState.model_validate(test.state)
+    state = await load_workspace_state(db, test)
     if test.active_operation_id is not None:
         raise AppError(
             status_code=409,
@@ -228,7 +231,7 @@ async def create_test_from_configuration(
 ) -> TestResponse:
     test = TestRun(
         owner_session_id=current.id,
-        state=WorkspaceState().model_dump(mode="json", by_alias=True),
+        state=new_workspace_state(),
     )
     db.add(test)
     await db.flush()
@@ -243,7 +246,7 @@ async def create_test_from_configuration(
     )
     await publish_change(request.app.state.notifications, test.id)
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
 
 
 @router.put(
@@ -278,4 +281,4 @@ async def save_configuration(
     )
     await publish_change(request.app.state.notifications, test.id)
     await db.refresh(test)
-    return to_test_response(test)
+    return await to_test_response(db, test)
