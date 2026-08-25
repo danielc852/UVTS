@@ -47,6 +47,21 @@ function evaluationActionError(error: Error | null): string | undefined {
   return 'The evaluation request could not be completed. Try again.';
 }
 
+function summarizeEvaluation(evaluation: EvaluationItem[]): {
+  completed: number;
+  failed: number;
+} {
+  let completed = 0;
+  let failed = 0;
+
+  for (const item of evaluation) {
+    if (item.status === 'complete' || item.status === 'failed') completed += 1;
+    if (item.status === 'failed') failed += 1;
+  }
+
+  return { completed, failed };
+}
+
 export function EvaluationSection({ state, questions, evaluation, testId }: EvaluationSectionProps) {
   const queryClient = useQueryClient();
   const evaluationByQuestion = useMemo(
@@ -70,10 +85,7 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
     );
   }
 
-  const completed = evaluation.filter(
-    (item) => item.status === 'complete' || item.status === 'failed',
-  ).length;
-  const failed = evaluation.filter((item) => item.status === 'failed').length;
+  const { completed, failed } = summarizeEvaluation(evaluation);
   const hasStarted = evaluation.length > 0;
 
   return (

@@ -63,6 +63,12 @@ function resultStatus(status: CoverageStatus) {
   return <Badge label={statusLabel[status]} variant={statusVariant[status]} />;
 }
 
+function recommendationVariant(priority: string): 'red' | 'orange' | 'blue' {
+  if (priority === 'High') return 'red';
+  if (priority === 'Medium') return 'orange';
+  return 'blue';
+}
+
 function reportRetryError(error: Error | null): string | undefined {
   if (!error) return undefined;
   if (error instanceof ReportRequestError) return error.message;
@@ -312,7 +318,7 @@ export function ReportSection({ state, report, testId }: ReportSectionProps) {
                       <strong>{recommendation.change}</strong>
                       <Badge
                         label={recommendation.priority}
-                        variant={recommendation.priority === 'High' ? 'red' : recommendation.priority === 'Medium' ? 'orange' : 'blue'}
+                        variant={recommendationVariant(recommendation.priority)}
                       />
                     </div>
                     <p>{recommendation.reason}</p>

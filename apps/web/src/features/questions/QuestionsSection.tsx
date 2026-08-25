@@ -124,14 +124,6 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
   const [addedQuestionClientId, setAddedQuestionClientId] = useState<string>();
   const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
   useEffect(() => {
-    setEditableQuestions(createEditableQuestions(questions));
-    nextClientId.current = 1;
-    setAddedQuestionClientId(undefined);
-    // Question text can refresh while asynchronous regeneration is still using the old set.
-    // Reset local edits only when the workspace or question-set identity actually changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace.id, questionSet?.id]);
-  useEffect(() => {
     if (addedQuestionClientId) addedQuestionRef.current?.focus();
   }, [addedQuestionClientId]);
   const clientValidationErrors = questionErrors(editableQuestions);

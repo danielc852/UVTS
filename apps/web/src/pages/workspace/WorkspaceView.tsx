@@ -67,7 +67,13 @@ function WorkspaceStep({
       );
       break;
     case 'questions':
-      content = <QuestionsSection state={state} workspace={workspace} />;
+      content = (
+        <QuestionsSection
+          key={`${workspace.id}:${workspace.questionSet?.id ?? 'no-question-set'}`}
+          state={state}
+          workspace={workspace}
+        />
+      );
       break;
     case 'upload':
       content = <ManualSection workspace={workspace} state={state} />;
