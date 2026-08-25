@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from uvts_api.schemas.workspace import GapKind, QuestionType, RecommendationPriority, Viewpoint
 
@@ -24,11 +26,41 @@ class AgentEvidence(AgentModel):
 
 
 class QuestionEvaluationOutput(AgentModel):
-    status: str = Field(pattern="^(found|partly_found|not_found)$")
-    information_needed: str = Field(min_length=1)
-    information_found: str | None
-    information_missing: str | None
-    evidence: list[AgentEvidence]
+    status: Literal["found", "partly_found", "not_found"] = Field(
+        description=(
+            "found when all needed information is evidenced; partly_found when only some is "
+            "evidenced; not_found when none is evidenced"
+        )
+    )
+    information_needed: str = Field(
+        min_length=1,
+        description="A non-blank description of all information required by the question",
+    )
+    information_found: Annotated[str, Field(min_length=1)] | None = Field(
+        description=(
+            "Non-blank information supported by evidence for found and partly_found; "
+            "null for not_found"
+        )
+    )
+    information_missing: Annotated[str, Field(min_length=1)] | None = Field(
+        description=(
+            "null for found; non-blank missing information for partly_found and not_found"
+        )
+    )
+    evidence: list[AgentEvidence] = Field(
+        description=(
+            "One or more exact manual extracts for found and partly_found; empty for not_found"
+        )
+    )
+
+    @field_validator("information_found", "information_missing", mode="before")
+    @classmethod
+    def normalize_blank_optional_strings(cls, value: object) -> object:
+        """Treat model-produced blank optional values as absent values."""
+
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class SynthesizedGap(AgentModel):

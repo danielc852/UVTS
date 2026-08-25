@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.messages.content import create_image_block
 from pydantic import ValidationError
 
@@ -30,9 +30,19 @@ _EVALUATION_SYSTEM_PROMPT = """You check only whether a product manual contains 
 information needed by one supplied question. Use only the page-labelled manual text. Do not
 answer the question, add outside knowledge, or treat plausible information as present. Return
 short, plain-language descriptions of information needed, found, and missing. Every evidence
-extract must be copied exactly from one supplied page. Use found only when all needed information
-is present, partly_found when some is present, and not_found when none is present. The product
+extract must be copied exactly from one supplied page. Follow these field relationships exactly:
+- found: information_found is non-blank, information_missing is null, and evidence is non-empty.
+- partly_found: information_found and information_missing are non-blank, and evidence is non-empty.
+- not_found: information_found is null, information_missing is non-blank, and evidence is empty.
+Use null, never an empty or whitespace-only string, when an optional field is absent. The product
 image and description are interpretation-only context: they must never count as evidence."""
+
+_EVALUATION_CORRECTION_PROMPT = """Return one fresh evaluation that follows the response contract.
+Use null rather than an empty string for an absent optional field. For found, provide non-blank
+information_found, null information_missing, and evidence. For partly_found, provide non-blank
+information_found, non-blank information_missing, and evidence. For not_found, provide null
+information_found, non-blank information_missing, and no evidence. Evidence must be an exact
+extract from a supplied manual page."""
 
 _REPORT_SYSTEM_PROMPT = """You turn persisted manual-coverage results into writing gaps,
 recommendations, and follow-up test questions. Use only the supplied results. Do not answer any
@@ -68,27 +78,40 @@ class EvaluatorAgent:
                     ),
                 )
             )
+        messages: list[BaseMessage] = [
+            SystemMessage(content=_EVALUATION_SYSTEM_PROMPT),
+            HumanMessage(content=content),
+        ]
+        output = await self._request_evaluation(messages)
+        try:
+            return _validate_evaluation(output, pages)
+        except EvaluatorOutputError:
+            # A single fresh attempt can repair a valid JSON response whose fields do not
+            # agree. The correction is fixed text and never repeats model or user content.
+            retry_output = await self._request_evaluation(
+                [*messages, HumanMessage(content=_EVALUATION_CORRECTION_PROMPT)]
+            )
+            return _validate_evaluation(retry_output, pages)
+
+    async def _request_evaluation(
+        self,
+        messages: list[BaseMessage],
+    ) -> QuestionEvaluationOutput:
         try:
             structured_model = self._model.with_structured_output(
                 QuestionEvaluationOutput,
                 method="json_schema",
                 strict=True,
             )
-            raw_output = await structured_model.ainvoke(
-                [
-                    SystemMessage(content=_EVALUATION_SYSTEM_PROMPT),
-                    HumanMessage(content=content),
-                ]
-            )
+            raw_output = await structured_model.ainvoke(messages)
         except (OutputParserException, ValidationError) as error:
             raise EvaluatorStructuredOutputError(type(error).__name__) from None
         except Exception as error:
             raise EvaluatorModelInvocationError(type(error).__name__) from None
         try:
-            output = QuestionEvaluationOutput.model_validate(raw_output)
+            return QuestionEvaluationOutput.model_validate(raw_output)
         except ValidationError as error:
             raise EvaluatorStructuredOutputError(type(error).__name__) from None
-        return _validate_evaluation(output, pages)
 
     async def evaluate_question(
         self,

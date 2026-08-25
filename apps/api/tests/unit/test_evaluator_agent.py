@@ -137,6 +137,7 @@ async def test_classifies_model_invocation_failure_without_copying_provider_deta
     assert details.error_type == "RuntimeError"
     assert details.message == "The evaluator model request failed."
     assert private_detail not in str(raised.value)
+    assert len(model.calls) == 1
 
 
 async def test_classifies_invalid_pydantic_output_as_structured_output_failure() -> None:
@@ -155,6 +156,161 @@ async def test_classifies_invalid_pydantic_output_as_structured_output_failure()
     assert details.stage == EvaluatorFailureStage.STRUCTURED_OUTPUT
     assert details.error_type == "ValidationError"
     assert details.message == "The evaluator returned an invalid structured response."
+    assert len(model.calls) == 1
+
+
+def test_normalizes_blank_optional_strings_to_none_and_keeps_non_blank_schema() -> None:
+    output = QuestionEvaluationOutput.model_validate(
+        {
+            "status": "found",
+            "information_needed": "setup steps",
+            "information_found": "present",
+            "information_missing": "   ",
+            "evidence": [{"page": 1, "extract": "Setup steps"}],
+        }
+    )
+    schema = QuestionEvaluationOutput.model_json_schema()
+    missing_options = schema["properties"]["information_missing"]["anyOf"]
+
+    assert output.information_missing is None
+    assert {option.get("minLength") for option in missing_options} == {1, None}
+
+
+@pytest.mark.parametrize(
+    ("expected_status", "output"),
+    [
+        (
+            "found",
+            {
+                "status": "found",
+                "information_needed": "steps",
+                "information_found": "present",
+                "information_missing": "",
+                "evidence": [{"page": 1, "extract": "Setup steps"}],
+            },
+        ),
+        (
+            "partly_found",
+            {
+                "status": "partly_found",
+                "information_needed": "steps and recovery",
+                "information_found": "steps",
+                "information_missing": "recovery",
+                "evidence": [{"page": 1, "extract": "Setup steps"}],
+            },
+        ),
+        (
+            "not_found",
+            {
+                "status": "not_found",
+                "information_needed": "recovery",
+                "information_found": "   ",
+                "information_missing": "all recovery steps",
+                "evidence": [],
+            },
+        ),
+    ],
+)
+async def test_accepts_each_status_invariant(expected_status: str, output: object) -> None:
+    model = FakeChatModel()
+    model.responses[QuestionEvaluationOutput].append(output)
+
+    result = await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
+        question=question(),
+        manual_pages=[{"page": 1, "text": "Setup steps"}],
+    )
+
+    assert result.status == expected_status
+    assert len(model.calls) == 1
+
+
+async def test_retries_semantic_validation_once_and_returns_corrected_result() -> None:
+    model = FakeChatModel()
+    model.responses[QuestionEvaluationOutput].extend(
+        [
+            {
+                "status": "partly_found",
+                "information_needed": "steps and recovery",
+                "information_found": "steps",
+                "information_missing": "",
+                "evidence": [{"page": 1, "extract": "Setup steps"}],
+            },
+            {
+                "status": "partly_found",
+                "information_needed": "steps and recovery",
+                "information_found": "steps",
+                "information_missing": "recovery",
+                "evidence": [{"page": 1, "extract": "Setup steps"}],
+            },
+        ]
+    )
+
+    result = await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
+        question=question(),
+        manual_pages=[{"page": 1, "text": "Setup steps"}],
+    )
+
+    assert result.status == "partly_found"
+    assert result.information_missing == "recovery"
+    assert len(model.calls) == 2
+
+
+async def test_exhausts_semantic_validation_retry_after_two_attempts() -> None:
+    model = FakeChatModel()
+    invalid = {
+        "status": "not_found",
+        "information_needed": "steps",
+        "information_found": None,
+        "information_missing": "all steps",
+        "evidence": [{"page": 1, "extract": "Setup steps"}],
+    }
+    model.responses[QuestionEvaluationOutput].extend([invalid, invalid])
+
+    with pytest.raises(EvaluatorOutputError, match="coverage status"):
+        await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
+            question=question(),
+            manual_pages=[{"page": 1, "text": "Setup steps"}],
+        )
+
+    assert len(model.calls) == 2
+
+
+async def test_semantic_retry_guidance_does_not_copy_private_inputs_or_output() -> None:
+    model = FakeChatModel()
+    private_values = (
+        "private-question-marker",
+        "private-manual-marker",
+        "private-description-marker",
+        "private-output-marker",
+    )
+    model.responses[QuestionEvaluationOutput].extend(
+        [
+            {
+                "status": "found",
+                "information_needed": private_values[3],
+                "information_found": "present",
+                "information_missing": "also missing",
+                "evidence": [{"page": 1, "extract": private_values[1]}],
+            },
+            {
+                "status": "not_found",
+                "information_needed": "setup steps",
+                "information_found": None,
+                "information_missing": "all setup steps",
+                "evidence": [],
+            },
+        ]
+    )
+
+    await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
+        question=Question(id="q1", text=private_values[0]),
+        manual_pages=[{"page": 1, "text": private_values[1]}],
+        product_description=private_values[2],
+    )
+
+    retry_guidance = str(model.calls[1][1][-1].content)
+    assert all(value not in retry_guidance for value in private_values)
+    assert "Use null rather than an empty string" in retry_guidance
 
 
 @pytest.mark.parametrize(
@@ -185,7 +341,7 @@ async def test_classifies_invalid_pydantic_output_as_structured_output_failure()
 )
 async def test_rejects_status_field_invariant_violations(output: object) -> None:
     model = FakeChatModel()
-    model.responses[QuestionEvaluationOutput].append(output)
+    model.responses[QuestionEvaluationOutput].extend([output, output])
 
     with pytest.raises(EvaluatorOutputError, match="coverage status") as raised:
         await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
@@ -208,15 +364,14 @@ async def test_rejects_status_field_invariant_violations(output: object) -> None
 )
 async def test_rejects_unverified_evidence(page: int, extract: str, message: str) -> None:
     model = FakeChatModel()
-    model.responses[QuestionEvaluationOutput].append(
-        QuestionEvaluationOutput(
-            status="found",
-            information_needed="steps",
-            information_found="present",
-            information_missing=None,
-            evidence=[{"page": page, "extract": extract}],
-        )
+    invalid = QuestionEvaluationOutput(
+        status="found",
+        information_needed="steps",
+        information_found="present",
+        information_missing=None,
+        evidence=[{"page": page, "extract": extract}],
     )
+    model.responses[QuestionEvaluationOutput].extend([invalid, invalid])
 
     with pytest.raises(EvaluatorOutputError, match=message):
         await EvaluatorAgent(cast(BaseChatModel, model)).evaluate(
