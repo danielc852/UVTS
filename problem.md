@@ -31,6 +31,15 @@ small-scale use case. Before UVTS is used by many simultaneous users or runs sev
 worker instances, add a shared provider-wide concurrency limit, such as a Redis-backed
 semaphore or a dedicated evaluation worker queue with controlled capacity.
 
+**Model fallback follow-up:** The OpenRouter client and the evaluation service can
+both retry a request when the selected model is unavailable or rate limited. Repeatedly
+waiting for the same model can make an evaluation take much longer than expected. The
+preferred solution is to use an OpenRouter fallback model instead of adding more
+application-level retry coordination. For example, if the primary model cannot serve
+the request, OpenRouter could route it to `deepseek-v4-flash`. Keep any remaining
+retries small and bounded, and verify the exact OpenRouter model identifier and
+fallback routing configuration before implementation.
+
 ## 3. UI clarity and structure — solved
 
 The interface had repeated step numbers and secondary explanations that competed
