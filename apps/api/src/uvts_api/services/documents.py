@@ -2,12 +2,14 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from pypdf import PdfReader
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
+from uvts_api.core.errors import AppError, manual_not_found
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.storage import DocumentStorage
@@ -16,6 +18,7 @@ from uvts_api.schemas.workspace import (
     ManualSummary,
     ManualUpload,
     ManualUploadStatus,
+    QuestionSetStatus,
     WorkflowStage,
     WorkspaceError,
 )
@@ -192,6 +195,140 @@ async def process_pending_document(
     await publish_change(notifications, test_id)
     if old_storage_key is not None:
         await delete_storage_after_commit(storage, old_storage_key)
+
+
+async def begin_manual_replacement(
+    *,
+    db: AsyncSession,
+    storage: DocumentStorage,
+    test: TestRun,
+    filename: str,
+    source: Path,
+) -> str:
+    """Persist a staged upload and record it as the pending manual."""
+
+    state = await load_workspace_state(db, test)
+    if state.question_set is None or state.question_set.status != QuestionSetStatus.CONFIRMED:
+        raise AppError(
+            status_code=409,
+            code="manual_locked",
+            message="Confirm the question set before uploading a manual.",
+        )
+    if test.active_operation_id is not None:
+        raise AppError(
+            status_code=409,
+            code="operation_in_progress",
+            message="Wait for the current test work to finish before replacing the manual.",
+            retryable=True,
+        )
+    pending = await db.scalar(
+        select(Document).where(Document.test_run_id == test.id, Document.role == "pending")
+    )
+    if pending is not None:
+        raise AppError(
+            status_code=409,
+            code="manual_upload_in_progress",
+            message="Wait for the current PDF check to finish before uploading another manual.",
+            retryable=True,
+        )
+
+    storage_key = f"{uuid4()}.pdf"
+    await storage.put(storage_key, source)
+    try:
+        document = Document(
+            test_run_id=test.id,
+            role="pending",
+            filename=filename,
+            storage_key=storage_key,
+            status=ManualUploadStatus.CHECKING.value,
+        )
+        db.add(document)
+        await db.flush()
+        update_state(
+            test,
+            state.model_copy(
+                update={
+                    "manual_upload": ManualUpload(
+                        id=document.id,
+                        filename=document.filename,
+                        status=ManualUploadStatus.CHECKING,
+                    ),
+                    "error": None,
+                }
+            ),
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await delete_storage_after_commit(storage, storage_key)
+        raise
+    return document.id
+
+
+async def remove_manual(
+    *,
+    db: AsyncSession,
+    storage: DocumentStorage,
+    test: TestRun,
+) -> None:
+    """Remove manual records and reset all state derived from the manual."""
+
+    if test.active_operation_id is not None:
+        raise AppError(
+            status_code=409,
+            code="operation_in_progress",
+            message="Wait for the current test work to finish before deleting the manual.",
+            retryable=True,
+        )
+    state = await load_workspace_state(db, test)
+    documents = list(
+        (
+            await db.scalars(
+                select(Document).where(
+                    Document.test_run_id == test.id,
+                    Document.role.in_(("active", "pending")),
+                )
+            )
+        ).all()
+    )
+    if not documents:
+        raise manual_not_found()
+    storage_keys = [document.storage_key for document in documents]
+    for document in documents:
+        await db.delete(document)
+    await db.execute(
+        delete(QuestionEvaluationRecord).where(QuestionEvaluationRecord.test_run_id == test.id)
+    )
+    questions_confirmed = (
+        state.question_set is not None
+        and state.question_set.status == QuestionSetStatus.CONFIRMED
+    )
+    update_state(
+        test,
+        state.model_copy(
+            update={
+                "current_stage": (
+                    WorkflowStage.UPLOAD if questions_confirmed else WorkflowStage.CONFIGURATION
+                ),
+                "manual": None,
+                "manual_upload": None,
+                "evaluation_source": None,
+                "evaluation": [],
+                "report": None,
+                "error": None,
+            }
+        ),
+    )
+    test.status = (
+        TestStatus.QUESTIONS_CONFIRMED.value if questions_confirmed else TestStatus.DRAFT.value
+    )
+    test.active_operation_id = None
+    settings = dict(test.agent_settings)
+    settings.pop("evaluator", None)
+    test.agent_settings = settings
+    await db.commit()
+    for storage_key in storage_keys:
+        await delete_storage_after_commit(storage, storage_key)
 
 
 async def promote_pending_document(

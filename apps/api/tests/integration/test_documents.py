@@ -157,6 +157,36 @@ async def test_attach_view_range_and_remove_manual_preserves_confirmed_questions
     assert deleted_body["manual"] is None
 
 
+async def test_remove_manual_clears_existing_evaluation_lineage(
+    client: AsyncClient, app: FastAPI, tmp_path: Path
+) -> None:
+    test_id, _ = await create_confirmed_test(app, client)
+    source = write_pdf(tmp_path / "evaluated-guide.pdf")
+    await upload_manual(client, test_id, source)
+    await seed_report_lineage(app, test_id)
+
+    deleted = await client.delete(f"/api/v1/tests/{test_id}/manual")
+
+    assert deleted.status_code == 200
+    body = deleted.json()
+    assert body["currentStage"] == "upload"
+    assert body["manual"] is None
+    assert body["evaluationSource"] is None
+    assert body["evaluation"] == []
+    assert body["report"] is None
+    async with app.state.session_factory() as db:
+        records = list(
+            (
+                await db.scalars(
+                    select(QuestionEvaluationRecord).where(
+                        QuestionEvaluationRecord.test_run_id == test_id
+                    )
+                )
+            ).all()
+        )
+        assert records == []
+
+
 async def test_non_eager_upload_queues_the_pending_document(
     app: FastAPI,
     client: AsyncClient,

@@ -1,7 +1,7 @@
 from uvts_api.adapters.db.models import QuestionEvaluationRecord
 from uvts_api.agents.schemas import ReportSynthesisOutput
 from uvts_api.schemas.workspace import EvaluationSource, Question, QuestionResult
-from uvts_api.services.evaluation import (
+from uvts_api.services.reporting import (
     FAILED_INFORMATION_NEEDED,
     build_coverage_counts,
     build_question_results,

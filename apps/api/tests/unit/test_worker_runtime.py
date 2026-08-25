@@ -1,5 +1,4 @@
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Self, cast
 
 import pytest
@@ -8,6 +7,7 @@ from uvts_api.core.config import Settings
 from uvts_api.workers import documents, evaluation, questions
 from uvts_api.workers import runtime as worker_runtime
 from uvts_api.workers.celery_app import celery_app
+from uvts_api.workers.settings import settings_for_agent
 
 
 class FakeEngine:
@@ -131,21 +131,27 @@ def test_workers_restore_recorded_agent_settings_without_mutating_defaults() -> 
         openrouter_model="current-default",
         openrouter_request_timeout_seconds=60,
     )
-    test = SimpleNamespace(
-        agent_settings={
-            "questionAgent": {
-                "model": "recorded-question-model",
-                "requestTimeoutSeconds": 25,
-            },
-            "evaluator": {
-                "model": "recorded-evaluator-model",
-                "requestTimeoutSeconds": 35,
-            },
-        }
-    )
+    recorded_settings = {
+        "questionAgent": {
+            "model": "recorded-question-model",
+            "requestTimeoutSeconds": 25,
+        },
+        "evaluator": {
+            "model": "recorded-evaluator-model",
+            "requestTimeoutSeconds": 35,
+        },
+    }
 
-    question_settings = questions._settings_for_operation(settings, test)  # type: ignore[arg-type]
-    evaluator_settings = evaluation._settings_for_operation(settings, test)  # type: ignore[arg-type]
+    question_settings = settings_for_agent(
+        settings,
+        recorded_settings,
+        agent="questionAgent",
+    )
+    evaluator_settings = settings_for_agent(
+        settings,
+        recorded_settings,
+        agent="evaluator",
+    )
 
     assert question_settings.openrouter_model == "recorded-question-model"
     assert question_settings.openrouter_request_timeout_seconds == 25
@@ -153,3 +159,45 @@ def test_workers_restore_recorded_agent_settings_without_mutating_defaults() -> 
     assert evaluator_settings.openrouter_request_timeout_seconds == 35
     assert settings.openrouter_model == "current-default"
     assert settings.openrouter_request_timeout_seconds == 60
+
+
+@pytest.mark.parametrize(
+    "recorded_settings",
+    [
+        None,
+        {},
+        {"evaluator": "not-an-object"},
+    ],
+)
+def test_recorded_agent_settings_fall_back_to_defaults(
+    recorded_settings: dict[str, object] | None,
+) -> None:
+    settings = Settings(
+        openrouter_model="current-default",
+        openrouter_request_timeout_seconds=60,
+    )
+
+    restored = settings_for_agent(settings, recorded_settings, agent="evaluator")
+
+    assert restored is settings
+
+
+def test_recorded_agent_settings_ignore_invalid_values() -> None:
+    settings = Settings(
+        openrouter_model="current-default",
+        openrouter_request_timeout_seconds=60,
+    )
+
+    restored = settings_for_agent(
+        settings,
+        {
+            "evaluator": {
+                "model": " ",
+                "requestTimeoutSeconds": True,
+            }
+        },
+        agent="evaluator",
+    )
+
+    assert restored.openrouter_model == "current-default"
+    assert restored.openrouter_request_timeout_seconds == 60

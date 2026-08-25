@@ -1,7 +1,6 @@
 import asyncio
 
 from uvts_api.adapters.db.models import TestRun
-from uvts_api.core.config import Settings
 from uvts_api.services.questions import (
     build_question_agent,
     fail_question_generation,
@@ -9,6 +8,7 @@ from uvts_api.services.questions import (
 )
 from uvts_api.workers.celery_app import celery_app
 from uvts_api.workers.runtime import open_worker_runtime
+from uvts_api.workers.settings import settings_for_agent
 
 
 @celery_app.task(name="uvts.questions.generate")  # type: ignore[untyped-decorator]
@@ -20,7 +20,11 @@ async def _generate_questions(test_id: str, operation_id: str) -> None:
     async with open_worker_runtime() as runtime:
         try:
             test = await runtime.db.get(TestRun, test_id)
-            operation_settings = _settings_for_operation(runtime.settings, test)
+            operation_settings = settings_for_agent(
+                runtime.settings,
+                test.agent_settings if test is not None else None,
+                agent="questionAgent",
+            )
             agent = build_question_agent(operation_settings)
         except Exception as error:
             await fail_question_generation(
@@ -43,19 +47,3 @@ async def _generate_questions(test_id: str, operation_id: str) -> None:
 
 def enqueue_question_generation(test_id: str, operation_id: str) -> None:
     celery_app.send_task("uvts.questions.generate", args=[test_id, operation_id])
-
-
-def _settings_for_operation(settings: Settings, test: TestRun | None) -> Settings:
-    if test is None:
-        return settings
-    question_settings = test.agent_settings.get("questionAgent")
-    if not isinstance(question_settings, dict):
-        return settings
-    model = question_settings.get("model")
-    timeout = question_settings.get("requestTimeoutSeconds")
-    updates: dict[str, object] = {}
-    if isinstance(model, str) and model.strip():
-        updates["openrouter_model"] = model
-    if isinstance(timeout, int) and not isinstance(timeout, bool) and timeout > 0:
-        updates["openrouter_request_timeout_seconds"] = timeout
-    return settings.model_copy(update=updates)

@@ -8,25 +8,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord, TestRun
 from uvts_api.agents.evaluator import EvaluatorAgent
-from uvts_api.agents.schemas import QuestionEvaluationOutput, ReportSynthesisOutput
+from uvts_api.agents.schemas import QuestionEvaluationOutput
 from uvts_api.core.errors import AppError
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
 from uvts_api.ports.question_generator import AgentProductImage
 from uvts_api.ports.storage import DocumentStorage
 from uvts_api.schemas.workspace import (
-    CoverageCounts,
     CoverageStatus,
     EvaluationItem,
     EvaluationSource,
     EvaluationStatus,
     Evidence,
-    Gap,
     ManualStatus,
     Question,
     QuestionResult,
     QuestionSetStatus,
-    Recommendation,
     Report,
     WorkflowStage,
     WorkspaceError,
@@ -34,13 +31,20 @@ from uvts_api.schemas.workspace import (
 )
 from uvts_api.services.events import publish_test_change
 from uvts_api.services.question_generation import build_question_generation_input
+from uvts_api.services.reporting import FAILED_INFORMATION_NEEDED as FAILED_INFORMATION_NEEDED
+from uvts_api.services.reporting import (
+    build_coverage_counts,
+    build_incomplete_report,
+    build_question_results,
+    build_report,
+    build_report_synthesis_error,
+)
 from uvts_api.services.tests import lock_test
 from uvts_api.services.workspace import load_workspace_state, update_state
 
 logger = logging.getLogger(__name__)
 
 QUESTION_FAILURE_MESSAGE = "The question could not be checked. Try this question again."
-FAILED_INFORMATION_NEEDED = "This question could not be checked."
 
 
 async def start_evaluation(
@@ -382,7 +386,7 @@ async def fail_evaluation_dispatch(
         ]
         results = build_question_results(state.questions, records)
         counts = build_coverage_counts(results)
-        report = _incomplete_report(state.evaluation_source, results, counts)
+        report = build_incomplete_report(state.evaluation_source, results, counts)
         workspace_error = WorkspaceError(
             code="evaluation_dispatch_failed",
             title="The evaluation could not start",
@@ -395,7 +399,7 @@ async def fail_evaluation_dispatch(
     else:
         evaluation = state.evaluation
         report = state.report
-        workspace_error = _report_synthesis_error()
+        workspace_error = build_report_synthesis_error()
     test.active_operation_id = None
     test.status = TestStatus.INCOMPLETE.value
     update_state(
@@ -742,12 +746,12 @@ async def _finalize_report(
             state.model_copy(
                 update={
                     "current_stage": WorkflowStage.REPORT,
-                    "report": _incomplete_report(
+                    "report": build_incomplete_report(
                         state.evaluation_source,
                         results,
                         counts,
                     ),
-                    "error": _report_synthesis_error(),
+                    "error": build_report_synthesis_error(),
                 }
             ),
         )
@@ -781,119 +785,6 @@ async def _finalize_report(
     )
     await db.commit()
     await publish_evaluation_change(notifications, test_id)
-
-
-def build_question_results(
-    questions: Sequence[Question],
-    records: Sequence[QuestionEvaluationRecord],
-) -> list[QuestionResult]:
-    records_by_id = {record.question_id: record for record in records}
-    results: list[QuestionResult] = []
-    for question in questions:
-        record = records_by_id.get(question.id)
-        if (
-            record is not None
-            and record.status == EvaluationStatus.COMPLETE.value
-            and record.result is not None
-        ):
-            try:
-                result = QuestionResult.model_validate(record.result)
-            except ValueError:
-                result = _failed_result(question)
-            if result.question.id != question.id:
-                result = _failed_result(question)
-            results.append(result)
-        else:
-            results.append(_failed_result(question))
-    return results
-
-
-def build_coverage_counts(results: Sequence[QuestionResult]) -> CoverageCounts:
-    return CoverageCounts(
-        found=sum(result.status == CoverageStatus.FOUND for result in results),
-        partly_found=sum(result.status == CoverageStatus.PARTLY_FOUND for result in results),
-        not_found=sum(result.status == CoverageStatus.NOT_FOUND for result in results),
-        failed=sum(result.status == CoverageStatus.FAILED for result in results),
-    )
-
-
-def build_report(
-    *,
-    source: EvaluationSource,
-    results: list[QuestionResult],
-    counts: CoverageCounts,
-    synthesis: ReportSynthesisOutput,
-) -> Report:
-    gap_ids = {gap.key: f"gap-{index}" for index, gap in enumerate(synthesis.gaps, start=1)}
-    gaps = [
-        Gap(
-            id=gap_ids[item.key],
-            title=item.title,
-            why_it_matters=item.why_it_matters,
-            affected_question_ids=item.affected_question_ids,
-            kind=item.kind,
-        )
-        for item in synthesis.gaps
-    ]
-    recommendations = [
-        Recommendation(
-            id=f"recommendation-{index}",
-            priority=item.priority,
-            change=item.change,
-            reason=item.reason,
-            gap_id=gap_ids[item.gap_key],
-        )
-        for index, item in enumerate(synthesis.recommendations, start=1)
-    ]
-    return Report(
-        source=source,
-        is_complete=counts.failed == 0,
-        counts=counts,
-        results=results,
-        gaps=gaps,
-        recommendations=recommendations,
-        follow_up_questions=synthesis.follow_up_questions,
-    )
-
-
-def _failed_result(question: Question) -> QuestionResult:
-    return QuestionResult(
-        question=question,
-        status=CoverageStatus.FAILED,
-        information_needed=FAILED_INFORMATION_NEEDED,
-        information_found=None,
-        information_missing=None,
-        evidence=[],
-    )
-
-
-def _incomplete_report(
-    source: EvaluationSource | None,
-    results: list[QuestionResult],
-    counts: CoverageCounts,
-) -> Report:
-    return Report(
-        source=source,
-        is_complete=False,
-        counts=counts,
-        results=results,
-        gaps=[],
-        recommendations=[],
-        follow_up_questions=[],
-    )
-
-
-def _report_synthesis_error() -> WorkspaceError:
-    return WorkspaceError(
-        code="report_synthesis_failed",
-        title="The report is incomplete",
-        message=(
-            "Question results were saved, but UVTS could not finish the report. "
-            "Try finishing the report again."
-        ),
-        stage=WorkflowStage.REPORT,
-        retryable=True,
-    )
 
 
 def _ensure_no_active_operation(test: TestRun) -> None:

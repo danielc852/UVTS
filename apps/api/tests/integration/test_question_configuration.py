@@ -140,7 +140,7 @@ async def test_failed_image_replacement_keeps_the_previous_image(
         raise RuntimeError("simulated state write failure")
 
     monkeypatch.setattr(
-        "uvts_api.api.routes.question_configuration.update_state",
+        "uvts_api.services.configuration.update_state",
         fail_state_update,
     )
     failed = await save_setup(

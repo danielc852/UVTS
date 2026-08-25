@@ -2,13 +2,12 @@ import asyncio
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated
-from uuid import uuid4
 
 from fastapi import APIRouter, File, Request, UploadFile
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from starlette.responses import FileResponse
 
-from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord
+from uvts_api.adapters.db.models import Document
 from uvts_api.api.dependencies import (
     CurrentSession,
     DatabaseSession,
@@ -16,21 +15,14 @@ from uvts_api.api.dependencies import (
     OperationDispatcherDependency,
 )
 from uvts_api.core.errors import AppError, manual_not_found
-from uvts_api.domain.enums import TestStatus
 from uvts_api.schemas.errors import ErrorResponse
 from uvts_api.schemas.tests import TestResponse
-from uvts_api.schemas.workspace import (
-    ManualUpload,
-    ManualUploadStatus,
-    QuestionSetStatus,
-    WorkflowStage,
-)
 from uvts_api.services.documents import (
-    delete_storage_after_commit,
+    begin_manual_replacement,
     publish_change,
+    remove_manual,
 )
 from uvts_api.services.tests import get_owned_test, to_test_response
-from uvts_api.services.workspace import load_workspace_state, update_state
 
 router = APIRouter(prefix="/tests", tags=["documents"])
 
@@ -95,68 +87,20 @@ async def replace_manual(
     file: Annotated[UploadFile, File()],
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id, for_update=True)
-    state = await load_workspace_state(db, test)
-    if state.question_set is None or state.question_set.status != QuestionSetStatus.CONFIRMED:
-        raise AppError(
-            status_code=409,
-            code="manual_locked",
-            message="Confirm the question set before uploading a manual.",
-        )
-    if test.active_operation_id is not None:
-        raise AppError(
-            status_code=409,
-            code="operation_in_progress",
-            message="Wait for the current test work to finish before replacing the manual.",
-            retryable=True,
-        )
-    pending = await db.scalar(
-        select(Document).where(Document.test_run_id == test.id, Document.role == "pending")
-    )
-    if pending is not None:
-        raise AppError(
-            status_code=409,
-            code="manual_upload_in_progress",
-            message="Wait for the current PDF check to finish before uploading another manual.",
-            retryable=True,
-        )
-
     filename = safe_filename(file)
     temporary = await save_temporary_upload(file)
-    storage_key = f"{uuid4()}.pdf"
     try:
-        await storage.put(storage_key, temporary)
+        document_id = await begin_manual_replacement(
+            db=db,
+            storage=storage,
+            test=test,
+            filename=filename,
+            source=temporary,
+        )
     finally:
         await asyncio.to_thread(temporary.unlink, missing_ok=True)
-    try:
-        document = Document(
-            test_run_id=test.id,
-            role="pending",
-            filename=filename,
-            storage_key=storage_key,
-            status=ManualUploadStatus.CHECKING.value,
-        )
-        db.add(document)
-        await db.flush()
-        update_state(
-            test,
-            state.model_copy(
-                update={
-                    "manual_upload": ManualUpload(
-                        id=document.id,
-                        filename=document.filename,
-                        status=ManualUploadStatus.CHECKING,
-                    ),
-                    "error": None,
-                }
-            ),
-        )
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        await delete_storage_after_commit(storage, storage_key)
-        raise
     await publish_change(request.app.state.notifications, test.id)
-    await operation_dispatcher.process_document(document.id)
+    await operation_dispatcher.process_document(document_id)
     await db.refresh(test)
     return await to_test_response(db, test)
 
@@ -211,68 +155,7 @@ async def delete_manual(
     storage: DocumentStorageDependency,
 ) -> TestResponse:
     test = await get_owned_test(db, test_id, current.id, for_update=True)
-    if test.active_operation_id is not None:
-        raise AppError(
-            status_code=409,
-            code="operation_in_progress",
-            message="Wait for the current test work to finish before deleting the manual.",
-            retryable=True,
-        )
-    state = await load_workspace_state(db, test)
-    documents = list(
-        (
-            await db.scalars(
-                select(Document).where(
-                    Document.test_run_id == test.id,
-                    Document.role.in_(("active", "pending")),
-                )
-            )
-        ).all()
-    )
-    if not documents:
-        raise manual_not_found()
-    storage_keys = [document.storage_key for document in documents]
-    for document in documents:
-        await db.delete(document)
-    await db.execute(
-        delete(QuestionEvaluationRecord).where(
-            QuestionEvaluationRecord.test_run_id == test.id
-        )
-    )
-    questions_confirmed = (
-        state.question_set is not None
-        and state.question_set.status == QuestionSetStatus.CONFIRMED
-    )
-    update_state(
-        test,
-        state.model_copy(
-            update={
-                "current_stage": (
-                    WorkflowStage.UPLOAD
-                    if questions_confirmed
-                    else WorkflowStage.CONFIGURATION
-                ),
-                "manual": None,
-                "manual_upload": None,
-                "evaluation_source": None,
-                "evaluation": [],
-                "report": None,
-                "error": None,
-            }
-        ),
-    )
-    test.status = (
-        TestStatus.QUESTIONS_CONFIRMED.value
-        if questions_confirmed
-        else TestStatus.DRAFT.value
-    )
-    test.active_operation_id = None
-    settings = dict(test.agent_settings)
-    settings.pop("evaluator", None)
-    test.agent_settings = settings
-    await db.commit()
+    await remove_manual(db=db, storage=storage, test=test)
     await publish_change(request.app.state.notifications, test.id)
-    for storage_key in storage_keys:
-        await delete_storage_after_commit(storage, storage_key)
     await db.refresh(test)
     return await to_test_response(db, test)
