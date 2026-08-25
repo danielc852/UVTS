@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from uvts_api.adapters.db.models import AnonymousSession
-from uvts_api.api.operation_dispatch import OperationDispatcher
+from uvts_api.api.dispatch import OperationDispatcher
 from uvts_api.core.config import Settings
 from uvts_api.core.errors import session_required
 from uvts_api.core.security import hash_session_token

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
 
-import uvts_api.api.operation_dispatch as operation_dispatch
+import uvts_api.api.dispatch as operation_dispatch
 from tests.integration.test_question_configuration import create_setup
 from tests.pdf_helpers import write_pdf
 from uvts_api.adapters.db.models import Document, QuestionEvaluationRecord

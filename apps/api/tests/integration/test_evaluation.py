@@ -11,7 +11,7 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 from sqlalchemy import select
 
-import uvts_api.api.operation_dispatch as operation_dispatch
+import uvts_api.api.dispatch as operation_dispatch
 from uvts_api.adapters.db.models import (
     AnonymousSession,
     Document,

@@ -8,7 +8,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import SecretStr
 from sqlalchemy import event
 
-import uvts_api.api.operation_dispatch as operation_dispatch
+import uvts_api.api.dispatch as operation_dispatch
 from tests.fake_models import FakeStructuredChatModel
 from tests.integration.test_question_configuration import create_setup, save_setup
 from uvts_api.adapters.db.models import Document

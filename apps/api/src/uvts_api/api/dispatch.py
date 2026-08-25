@@ -30,7 +30,7 @@ DispatchFailureHandler = Callable[[Exception], Awaitable[None]]
 
 
 class OperationDispatcher:
-    """Choose in-process or queued execution for API-started background work."""
+    """Dispatch API-started background work in-process or through the queue."""
 
     def __init__(
         self,
