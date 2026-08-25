@@ -141,6 +141,18 @@ p, li { line-height: 1.55; }
 .question-list, .evaluation-list { margin: 0; padding-inline-start: 24px; }
 .question-list li, .evaluation-list li { border-block-end: 1px solid #dedede; padding: 16px 0; }
 .question-list p { margin-block: 0 8px; }
+.question-list-scroll {
+  max-block-size: min(55vh, 40rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: var(--spacing-2, 12px);
+  scrollbar-gutter: stable;
+}
+.question-list-scroll:focus-visible {
+  border-radius: var(--radius-container, 8px);
+  outline: 2px solid var(--color-text-primary, #111);
+  outline-offset: 3px;
+}
 .question-editor-list li { padding-block: 20px; }
 .question-editor-actions { flex-wrap: wrap; }
 .action-row { justify-content: flex-end; margin-block-start: 24px; }

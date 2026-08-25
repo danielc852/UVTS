@@ -203,13 +203,20 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
       )}
       {isConfirmed ? (
         <>
-          <ol className="question-list">
-            {questions.map((question) => (
-              <li key={question.id}>
-                <p>{question.text}</p>
-              </li>
-            ))}
-          </ol>
+          <div
+            className="question-list-scroll"
+            role="region"
+            aria-label="Confirmed question list"
+            tabIndex={0}
+          >
+            <ol className="question-list">
+              {questions.map((question) => (
+                <li key={question.id}>
+                  <p>{question.text}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
           <div className="action-row">
             <Button
               label="Start over"
@@ -233,35 +240,42 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
             });
           }}
         >
-          <ol className="question-list question-editor-list">
-            {editableQuestions.map((question, index) => (
-              <li key={question.clientId}>
-                <TextArea
-                  ref={question.clientId === addedQuestionClientId ? addedQuestionRef : undefined}
-                  label={`Question ${index + 1}`}
-                  value={question.text}
-                  onChange={(text) => {
-                    actionMutation.reset();
-                    setEditableQuestions((current) =>
-                      current.map((item) =>
-                        item.clientId === question.clientId ? { ...item, text } : item,
-                      ),
-                    );
-                  }}
-                  rows={3}
-                  width="100%"
-                  isDisabled={state === 'working' || isSubmitting}
-                  disabledMessage="Wait for the current question action to finish."
-                  status={
-                    validationErrors[index]
-                      ? { type: 'error', message: validationErrors[index] }
-                      : undefined
-                  }
-                  statusVariant="detached"
-                />
-              </li>
-            ))}
-          </ol>
+          <div
+            className="question-list-scroll"
+            role="region"
+            aria-label="Editable question list"
+            tabIndex={0}
+          >
+            <ol className="question-list question-editor-list">
+              {editableQuestions.map((question, index) => (
+                <li key={question.clientId}>
+                  <TextArea
+                    ref={question.clientId === addedQuestionClientId ? addedQuestionRef : undefined}
+                    label={`Question ${index + 1}`}
+                    value={question.text}
+                    onChange={(text) => {
+                      actionMutation.reset();
+                      setEditableQuestions((current) =>
+                        current.map((item) =>
+                          item.clientId === question.clientId ? { ...item, text } : item,
+                        ),
+                      );
+                    }}
+                    rows={3}
+                    width="100%"
+                    isDisabled={state === 'working' || isSubmitting}
+                    disabledMessage="Wait for the current question action to finish."
+                    status={
+                      validationErrors[index]
+                        ? { type: 'error', message: validationErrors[index] }
+                        : undefined
+                    }
+                    statusVariant="detached"
+                  />
+                </li>
+              ))}
+            </ol>
+          </div>
           <div className="action-row question-editor-actions">
             <Button
               label="Add question"

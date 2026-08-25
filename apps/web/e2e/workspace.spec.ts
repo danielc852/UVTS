@@ -48,6 +48,31 @@ test('reflows without horizontal page scrolling', async ({ page }) => {
   expect(widths.content).toBeLessThanOrEqual(widths.viewport);
 });
 
+test('keeps the question editor in a scrollable region', async ({ page }) => {
+  await page.goto('/tests/questions-ready');
+
+  const questionList = page.getByRole('region', { name: 'Editable question list' });
+  await expect(questionList).toBeVisible();
+
+  const layout = await questionList.evaluate((element) => {
+    const listBounds = element.getBoundingClientRect();
+    const actions = document.querySelector('.question-editor-actions');
+    const actionBounds = actions?.getBoundingClientRect();
+
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      listBottom: listBounds.bottom,
+      actionsTop: actionBounds?.top,
+    };
+  });
+
+  expect(layout.overflowY).toBe('auto');
+  expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);
+  expect(layout.actionsTop).toBeGreaterThanOrEqual(layout.listBottom);
+});
+
 test('renders and keyboard-scrolls the uploaded PDF without page overflow', async ({ page }) => {
   let pdfRequests = 0;
   await page.route('**/api/v1/tests/manual-ready/manual/content', (route) => {

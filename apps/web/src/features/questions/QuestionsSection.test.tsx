@@ -56,6 +56,18 @@ describe('QuestionsSection', () => {
     expect(await screen.findByRole('heading', { name: 'Upload manual' })).toBeInTheDocument();
   });
 
+  it('keeps the editable question list in a labeled scroll region', async () => {
+    renderApp('/tests/questions-ready');
+
+    const scrollRegion = await screen.findByRole('region', {
+      name: 'Editable question list',
+    });
+
+    expect(scrollRegion).toHaveClass('question-list-scroll');
+    expect(scrollRegion).toHaveAttribute('tabindex', '0');
+    expect(scrollRegion.querySelector('ol')).toHaveClass('question-list');
+  });
+
   it('requires an explicit dialog before replacing a draft', async () => {
     const user = userEvent.setup();
     const regenerated = getWorkspaceFixture('questions-ready');
