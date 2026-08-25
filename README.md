@@ -173,6 +173,8 @@ product description, and 1–15 questions. Scanned documents remain out of scope
 because OCR is not included. Agent calls use `qwen/qwen3.8-27b` through OpenRouter,
 which automatically tries `minimax/minimax-m3` when the primary model fails. Set
 `OPENROUTER_FALLBACK_MODEL` to change the fallback or leave it blank to disable
-model fallback. Question
+model fallback. Both models use medium reasoning effort by default; set
+`OPENROUTER_REASONING_EFFORT` to choose another OpenRouter-supported level for the
+whole primary-and-fallback request. Question
 types, topic selection, user viewpoints, and per-type question counts are deferred
 from the basic V1 workflow.

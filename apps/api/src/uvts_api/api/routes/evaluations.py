@@ -118,6 +118,7 @@ def _recorded_agent_settings(settings: Settings) -> dict[str, object]:
         "provider": "openrouter",
         "model": settings.openrouter_model,
         "fallbackModel": settings.openrouter_fallback_model,
+        "reasoningEffort": settings.openrouter_reasoning_effort,
         "temperature": 0.0,
         "requestTimeoutSeconds": settings.openrouter_request_timeout_seconds,
         "maxRetries": 2,

@@ -1,8 +1,22 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+type OpenRouterReasoningEffort = Literal[
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+]
+OPENROUTER_REASONING_EFFORTS = frozenset(
+    {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+)
 
 
 class Settings(BaseSettings):
@@ -76,6 +90,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "OPENROUTER_FALLBACK_MODEL",
             "UVTS_OPENROUTER_FALLBACK_MODEL",
+        ),
+    )
+    openrouter_reasoning_effort: OpenRouterReasoningEffort = Field(
+        default="medium",
+        validation_alias=AliasChoices(
+            "OPENROUTER_REASONING_EFFORT",
+            "UVTS_OPENROUTER_REASONING_EFFORT",
         ),
     )
     openrouter_request_timeout_seconds: int = Field(

@@ -103,6 +103,32 @@ def test_openrouter_uses_minimax_m3_as_the_model_fallback(
 
     assert captured_options["model_name"] == "qwen/qwen3.8-27b"
     assert captured_options["model_kwargs"] == {"models": ["minimax/minimax-m3"]}
+    assert captured_options["reasoning"] == {"effort": "medium"}
+
+
+def test_openrouter_reasoning_effort_is_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    def capture_model_options(**options: object) -> object:
+        captured_options.update(options)
+        return object()
+
+    monkeypatch.setattr(openrouter, "ChatOpenRouter", capture_model_options)
+    settings = Settings(
+        OPENROUTER_API_KEY="test-key",
+        OPENROUTER_REASONING_EFFORT="low",
+    )
+
+    build_openrouter_model(settings)
+
+    assert captured_options["reasoning"] == {"effort": "low"}
+
+
+def test_openrouter_rejects_unknown_reasoning_effort() -> None:
+    with pytest.raises(ValidationError):
+        Settings(OPENROUTER_REASONING_EFFORT="ultra")
 
 
 @pytest.mark.parametrize("fallback_model", ["", "  ", "qwen/qwen3.8-27b"])

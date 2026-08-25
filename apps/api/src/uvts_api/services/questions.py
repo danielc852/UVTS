@@ -80,6 +80,7 @@ async def begin_question_generation(
         "provider": "openrouter",
         "model": settings.openrouter_model,
         "fallbackModel": settings.openrouter_fallback_model,
+        "reasoningEffort": settings.openrouter_reasoning_effort,
         "temperature": QUESTION_AGENT_TEMPERATURE,
         "requestTimeoutSeconds": settings.openrouter_request_timeout_seconds,
         "maxRetries": 2,

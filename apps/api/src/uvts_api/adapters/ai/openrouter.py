@@ -26,6 +26,7 @@ def build_openrouter_model(settings: Settings, *, temperature: float = 0.0) -> C
         model_kwargs=model_kwargs,
         openrouter_api_key=SecretStr(api_key.get_secret_value().strip()),
         temperature=temperature,
+        reasoning={"effort": settings.openrouter_reasoning_effort},
         request_timeout=settings.openrouter_request_timeout_seconds * 1_000,
         max_retries=2,
         openrouter_provider={"require_parameters": True},
