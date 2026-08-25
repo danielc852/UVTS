@@ -1,7 +1,7 @@
 # UVTS Development Progress
 
 **Current milestone:** V1 functional workflow implemented  
-**Reviewed through:** 25 August 2026
+**Reviewed through:** 26 August 2026
 
 ## Current status
 
@@ -16,6 +16,14 @@ V1 of UVTS is working across the intended five-stage journey:
 The application now has a React interface, FastAPI backend, background jobs,
 PostgreSQL persistence, Redis events, private file handling, OpenRouter-powered AI
 workflows, and automated backend and browser tests.
+
+The latest iteration reduces evaluation waiting time by checking multiple questions
+at once, with a configurable concurrency limit and coordinated handling of provider
+rate limits. The report is now an interactive dashboard with exact coverage counts,
+an accessible coverage bar and legend, result filters, expandable evidence, linked
+gaps, recommendations, follow-up questions, and retry handling. Workflow navigation
+was also simplified by removing repeated step numbers and secondary header text while
+retaining stage names, completion state, and accessible navigation labels.
 
 The feature work is complete enough to call this the **V1 functional milestone**.
 The remaining release task is final live-stack verification: the current Playwright
@@ -49,6 +57,7 @@ I worked in short loops:
 | 23 Aug | Defined the product and built the first application foundation. |
 | 24 Aug | Added the PDF workflow, AI agents, question generation, evaluation, reporting, and integration. |
 | 25 Aug | Reworked the flow to be manual-independent, fixed OpenRouter issues, strengthened tests, and simplified the architecture. |
+| 26 Aug | Added concurrent evaluation with rate-limit coordination, built the interactive coverage dashboard, and simplified workflow navigation. |
 
 ## What worked well
 
@@ -57,6 +66,10 @@ I worked in short loops:
 - Testing each layer reduced the risk of hidden regressions.
 - Revisiting the workflow improved the product instead of locking in the first idea.
 - Refactoring after validation kept the code easier to maintain.
+- Bounded concurrency improved throughput without removing per-question progress,
+  retry behavior, or failure isolation.
+- Turning the report into a filterable dashboard made coverage, evidence, and the
+  next writing actions easier to scan.
 
 ## Main lesson
 
@@ -68,5 +81,7 @@ direction in small steps.
 ## Next step
 
 Run one final Docker-backed end-to-end test with a real product image, OpenRouter
-generation, PDF upload, evaluation, page evidence, and report reload. Once that
-passes, V1 can be marked release-ready rather than only functionally complete.
+generation, PDF upload, concurrent evaluation, page evidence, report interaction,
+and report reload. Record the total evaluation duration to confirm whether the
+one-minute latency goal is met. Once that passes, V1 can be marked release-ready
+rather than only functionally complete.

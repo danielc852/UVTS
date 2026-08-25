@@ -6,16 +6,37 @@ The problem was discovered after asking whether UVTS had a test for calling an O
 
 Yes. The shared OpenRouter adapter now converts the public timeout setting from seconds to milliseconds at the `ChatOpenRouter` boundary and trims the API key before passing it to the SDK. Focused regression tests cover the 60-second to 60,000-millisecond conversion, surrounding key whitespace, and blank-key rejection. The full API test suite passes locally; the opt-in live smoke test remains skipped unless explicitly enabled with an API key.
 
-## 2. Agent evaluation latency — open
+## 2. Agent evaluation latency — improved; timing verification open
 
-The application currently takes too long to call the agent and evaluate a question. This makes the evaluation flow feel slow and prevents users from getting timely feedback.
+The application previously evaluated questions one at a time, so total waiting time
+grew roughly with the number of questions. It now evaluates a bounded number of
+questions concurrently. The default maximum is four and can be configured from 1 to
+15 with `EVALUATION_MAX_CONCURRENCY`. Each question still reports its own progress
+and failure, completed results are preserved, and HTTP 429 responses use limited
+retries plus a shared provider cooldown.
 
 **Goal:** Complete the full evaluation flow within 1 minute, measured from when the user submits a question until the final evaluation result is displayed.
 
-The latency should be measured across the complete flow so the main bottleneck can be identified. This includes request preparation, agent and model calls, retries, tool calls, result processing, and delivery of the result to the UI.
+Automated integration tests confirm that model calls overlap only up to the configured
+limit, rate-limit retries respect their cooldown, and cancellation and failure paths
+remain safe. The one-minute goal is not yet marked solved because it still needs a
+real Docker-backed measurement across request preparation, model calls, retries,
+result processing, and delivery to the browser.
 
-## 3. UI clarity and structure — open
+## 3. UI clarity and structure — solved
 
-The current UI contains too much unnecessary text, and its information structure can be improved. Important actions and evaluation results are harder to find because they compete with secondary explanations and content.
+The interface had repeated step numbers and secondary explanations that competed
+with the current task, while the report presented important findings as a long,
+mostly static sequence.
 
-**Goal:** Simplify the interface by removing or shortening non-essential text, improving the visual hierarchy, grouping related information, and making the main question-and-evaluation flow easy to understand at a glance.
+The workflow now uses plain stage titles, quieter completion markers, a simpler app
+header, and concise back/continue navigation. The report groups information into a
+clear dashboard: exact status counts and a labeled coverage bar provide the overview;
+filters isolate covered, review-needed, or failed questions; expandable results keep
+page evidence available without overwhelming the page; and gaps link back to the
+questions they affect. Responsive styles and accessible labels preserve the same
+structure on narrow screens and for assistive technology.
+
+Component and workspace tests were updated for the simplified headings and navigation,
+and report tests cover filtering, linked results, retry behavior, and the visible
+coverage breakdown.
