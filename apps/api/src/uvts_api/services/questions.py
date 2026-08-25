@@ -15,7 +15,11 @@ from uvts_api.core.config import Settings
 from uvts_api.core.errors import AppError
 from uvts_api.domain.enums import TestStatus
 from uvts_api.ports.notifications import StateNotifications
-from uvts_api.ports.question_generator import GeneratedQuestionSet, QuestionGenerator
+from uvts_api.ports.question_generator import (
+    QUESTION_SUGGESTION_INSTRUCTIONS,
+    GeneratedQuestionSet,
+    QuestionGenerator,
+)
 from uvts_api.ports.storage import DocumentStorage
 from uvts_api.schemas.questions import ConfirmQuestionItem
 from uvts_api.schemas.workspace import (
@@ -80,7 +84,12 @@ async def begin_question_generation(
         "maxRetries": 2,
     }
     test.agent_settings = agent_settings
-    update_state(test, state.model_copy(update={"error": None}))
+    update_state(
+        test,
+        state.model_copy(
+            update={"current_stage": WorkflowStage.QUESTIONS, "error": None}
+        ),
+    )
     await db.commit()
     await publish_question_change(notifications, test.id)
     return operation
@@ -265,6 +274,70 @@ async def confirm_questions(
     await db.commit()
 
 
+async def suggest_question(
+    *,
+    db: AsyncSession,
+    storage: DocumentStorage,
+    test: TestRun,
+    settings: Settings,
+    direction: str,
+    existing_questions: list[str],
+    agent: QuestionGenerator | None = None,
+) -> str:
+    """Generate one reviewable question without changing the saved draft."""
+
+    state = await load_workspace_state(db, test)
+    _ensure_suggestion_allowed(test, state)
+    if not is_openrouter_configured(settings):
+        raise AppError(
+            status_code=503,
+            code="openrouter_api_key_required",
+            message=(
+                "An OpenRouter API key is required to generate a question. "
+                "Add OPENROUTER_API_KEY to the server environment and restart UVTS."
+            ),
+        )
+    clean_direction = direction.strip()
+    if not clean_direction:
+        raise AppError(
+            status_code=422,
+            code="question_direction_required",
+            message="Describe the kind of question you want UVTS to create.",
+            field_errors={"direction": ["Enter a direction for the question."]},
+        )
+    clean_existing = tuple(question.strip() for question in existing_questions if question.strip())
+    try:
+        question_agent = agent or build_question_agent(settings)
+        request = await build_question_generation_input(
+            db=db,
+            storage=storage,
+            test=test,
+            total_questions=1,
+            instructions=QUESTION_SUGGESTION_INSTRUCTIONS,
+            direction=clean_direction,
+            existing_questions=clean_existing,
+        )
+        generated = await question_agent.generate(request)
+        suggestion = validate_generated_questions(generated, expected_count=1)[0]
+        existing_keys = {_normalized_question_key(question) for question in clean_existing}
+        if _normalized_question_key(suggestion) in existing_keys:
+            raise ValueError("The suggested question duplicates the current draft.")
+        return suggestion
+    except AppError:
+        raise
+    except Exception as error:
+        logger.warning(
+            "Question suggestion failed",
+            extra={"test_id": test.id, "error_type": type(error).__name__},
+        )
+        raise AppError(
+            status_code=502,
+            code="question_suggestion_failed",
+            message="UVTS could not generate a question. Try again.",
+            retryable=True,
+        ) from None
+
+
 async def start_over(*, db: AsyncSession, storage: DocumentStorage, test: TestRun) -> None:
     test = await lock_test(db, test.id)
     if test.active_operation_id is not None:
@@ -326,6 +399,43 @@ def _ensure_generation_allowed(test: TestRun, state: WorkspaceState) -> None:
             status_code=409,
             code="question_set_confirmed",
             message="Start over before generating different questions.",
+        )
+    configuration = state.configuration
+    if configuration.product_image is None or not configuration.product_description.strip():
+        raise AppError(
+            status_code=409,
+            code="question_configuration_incomplete",
+            message="Save a product image and description before creating questions.",
+        )
+    if state.evaluation or state.report is not None:
+        raise AppError(
+            status_code=409,
+            code="question_generation_not_allowed",
+            message="Questions cannot be generated at this stage of the test.",
+        )
+
+
+def _ensure_suggestion_allowed(test: TestRun, state: WorkspaceState) -> None:
+    if test.active_operation_id is not None:
+        raise _operation_in_progress()
+    question_set = state.question_set
+    if question_set is None or question_set.status != QuestionSetStatus.DRAFT:
+        raise AppError(
+            status_code=409,
+            code="question_set_not_editable",
+            message="Generate a draft question set before asking AI for another question.",
+        )
+    if question_set.source != QuestionSetSource.PRODUCT_CONTEXT:
+        raise AppError(
+            status_code=409,
+            code="question_set_not_editable",
+            message="Generate a product-only question set before adding questions.",
+        )
+    if question_set.configuration_version != state.configuration.version:
+        raise AppError(
+            status_code=409,
+            code="question_set_stale",
+            message="Generate a new set after the latest Product setup changes.",
         )
     configuration = state.configuration
     if configuration.product_image is None or not configuration.product_description.strip():

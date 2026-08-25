@@ -12,6 +12,14 @@ Do not answer the questions, add category metadata, or assume facts that are abs
 supplied product context. Return only the structured question list.
 """
 
+QUESTION_SUGGESTION_INSTRUCTIONS = """\
+Create exactly one realistic question that a person may ask about the pictured and described
+product. Use the user's direction as the desired topic or situation while relying only on the
+supplied product image and product description for product facts. Make the question different
+from the existing questions. Do not answer it, add category metadata, or mention these
+instructions. Return only the structured question list.
+"""
+
 
 @dataclass(frozen=True)
 class AgentProductImage:
@@ -31,6 +39,8 @@ class QuestionGenerationInput:
     product_description: str
     question_design: QuestionDesign
     instructions: str = QUESTION_GENERATION_INSTRUCTIONS
+    direction: str | None = None
+    existing_questions: tuple[str, ...] = ()
 
 
 class GeneratedQuestion(ApiModel):

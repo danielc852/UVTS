@@ -87,4 +87,36 @@ describe('question transitions', () => {
     });
     vi.unstubAllGlobals();
   });
+
+  it('requests one AI question from a direction and the current draft', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'Can I use it outdoors in rain?' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = await import('./api');
+
+    const result = await api.suggestQuestion(
+      'test-1',
+      'Ask about outdoor use.',
+      ['How do I start setup?'],
+    );
+
+    expect(result).toBe('Can I use it outdoors in rain?');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/v1\/tests\/test-1\/questions\/suggestion$/),
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          direction: 'Ask about outdoor use.',
+          existingQuestions: ['How do I start setup?'],
+        }),
+      },
+    );
+    vi.unstubAllGlobals();
+  });
 });

@@ -13,6 +13,7 @@ import {
   QuestionTransitionError,
   startOver,
 } from './api';
+import { QuestionSuggestionDialog } from './QuestionSuggestionDialog';
 import { storeWorkspace } from '../../entities/workspace/query';
 import type { TestWorkspace } from '../../entities/workspace/model';
 import { StageSection } from '../../shared/ui/StageSection';
@@ -109,6 +110,7 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
   const nextClientId = useRef(1);
   const addedQuestionRef = useRef<HTMLTextAreaElement>(null);
   const [addedQuestionClientId, setAddedQuestionClientId] = useState<string>();
+  const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
   useEffect(() => {
     setEditableQuestions(createEditableQuestions(questions));
     nextClientId.current = 1;
@@ -142,6 +144,20 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
         state="locked"
         lockedText="Save Product setup to generate questions."
       />
+    );
+  }
+
+  if (state === 'working' && !questionSet) {
+    return (
+      <StageSection
+        number={2}
+        title="Review and confirm questions"
+        state="working"
+        error={workspace.error}
+      >
+        <ProgressBar label="Generating questions" isIndeterminate />
+        <p role="status">Creating a new draft from the saved product image and description…</p>
+      </StageSection>
     );
   }
 
@@ -261,6 +277,17 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
               }}
             />
             <Button
+              label="Generate question with AI"
+              variant="secondary"
+              type="button"
+              isDisabled={state === 'working' || isSubmitting || isAtQuestionLimit}
+              tooltip={isAtQuestionLimit ? 'You can confirm up to 15 questions.' : undefined}
+              onClick={() => {
+                actionMutation.reset();
+                setIsSuggestionOpen(true);
+              }}
+            />
+            <Button
               label={isLegacy ? 'Generate product-only questions' : 'Generate again'}
               variant="secondary"
               type="button"
@@ -307,6 +334,18 @@ export function QuestionsSection({ state, workspace }: QuestionsSectionProps) {
         isActionLoading={isSubmitting}
         onAction={() => {
           if (pendingAction) actionMutation.mutate({ type: pendingAction });
+        }}
+      />
+      <QuestionSuggestionDialog
+        testId={workspace.id}
+        isOpen={isSuggestionOpen}
+        onOpenChange={setIsSuggestionOpen}
+        existingQuestions={editableQuestions.map((question) => question.text)}
+        onAdd={(text) => {
+          actionMutation.reset();
+          const clientId = `new-${nextClientId.current++}`;
+          setEditableQuestions((current) => [...current, { clientId, text }]);
+          setAddedQuestionClientId(clientId);
         }}
       />
     </StageSection>

@@ -637,6 +637,44 @@
         "title": "QuestionSetStatus",
         "type": "string"
       },
+      "QuestionSuggestionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Direction",
+            "type": "string"
+          },
+          "existingQuestions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 15,
+            "title": "Existingquestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "direction"
+        ],
+        "title": "QuestionSuggestionRequest",
+        "type": "object"
+      },
+      "QuestionSuggestionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "QuestionSuggestionResponse",
+        "type": "object"
+      },
       "ReadyResponse": {
         "properties": {
           "database": {
@@ -1957,6 +1995,108 @@
           }
         },
         "summary": "Confirm Test Questions",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/api/v1/tests/{test_id}/questions/suggestion": {
+      "post": {
+        "operationId": "suggest_test_question_api_v1_tests__test_id__questions_suggestion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionSuggestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionSuggestionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Suggest Test Question",
         "tags": [
           "questions"
         ]

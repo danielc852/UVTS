@@ -9,6 +9,7 @@ const questionApi = vi.hoisted(() => ({
   confirm: vi.fn(),
   generate: vi.fn(),
   startOver: vi.fn(),
+  suggest: vi.fn(),
   QuestionTransitionError: class QuestionTransitionError extends Error {
     constructor(
       message: string,
@@ -24,6 +25,7 @@ vi.mock('./api', () => ({
   confirmQuestions: questionApi.confirm,
   generateQuestions: questionApi.generate,
   startOver: questionApi.startOver,
+  suggestQuestion: questionApi.suggest,
   QuestionTransitionError: questionApi.QuestionTransitionError,
 }));
 
@@ -32,6 +34,7 @@ describe('QuestionsSection', () => {
     questionApi.confirm.mockReset();
     questionApi.generate.mockReset();
     questionApi.startOver.mockReset();
+    questionApi.suggest.mockReset();
   });
 
   it('persists confirmation and advances to Upload manual', async () => {
@@ -85,6 +88,32 @@ describe('QuestionsSection', () => {
     expect(submittedItems).toHaveLength(10);
     expect(submittedItems[0]).toEqual({ id: 'q1', text: 'How do I pair the speaker?' });
     expect(submittedItems[9]).toEqual({ id: undefined, text: 'Is a reset reversible?' });
+  });
+
+  it('adds an editable AI question generated from the writer direction', async () => {
+    const user = userEvent.setup();
+    questionApi.suggest.mockResolvedValue('Can I use the speaker during a power outage?');
+    renderApp('/tests/questions-ready');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Generate question with AI' }),
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await user.type(
+      screen.getByRole('textbox', { name: 'Direction for the question' }),
+      'Ask about using the product during a power outage.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Generate question' }));
+
+    expect(questionApi.suggest).toHaveBeenCalledWith(
+      'questions-ready',
+      'Ask about using the product during a power outage.',
+      expect.arrayContaining(['How do I complete the initial setup? (1)']),
+    );
+    const generated = await screen.findByRole('textbox', { name: 'Question 10' });
+    expect(generated).toHaveValue('Can I use the speaker during a power outage?');
+    expect(generated).toHaveFocus();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('shows inline errors for blank and duplicate questions', async () => {

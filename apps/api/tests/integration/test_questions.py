@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from sqlalchemy import event
 
 import uvts_api.api.dispatch as operation_dispatch
+import uvts_api.services.questions as question_service
 from tests.fake_models import FakeStructuredChatModel
 from tests.integration.test_question_configuration import create_setup, save_setup
 from uvts_api.adapters.db.models import Document
@@ -52,6 +53,11 @@ async def generation_client(
     app.state.notifications = notifications
     monkeypatch.setattr(
         operation_dispatch,
+        "build_question_agent",
+        lambda settings: QuestionAgent(cast(BaseChatModel, model)),
+    )
+    monkeypatch.setattr(
+        question_service,
         "build_question_agent",
         lambda settings: QuestionAgent(cast(BaseChatModel, model)),
     )
@@ -141,6 +147,36 @@ async def test_generation_needs_no_manual_and_persists_a_draft_set(
         test = await db.get(RunModel, test_id)
         assert test is not None
         assert test.active_operation_id is None
+
+
+async def test_queued_generation_advances_to_question_progress(
+    app: FastAPI,
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, notifications = generation_client
+    test_id = await configured_test(client)
+    queued_operations: list[tuple[str, str]] = []
+    app.state.settings.agent_processing_eager = False
+    notifications.published.clear()
+    monkeypatch.setattr(
+        operation_dispatch,
+        "enqueue_question_generation",
+        lambda queued_test_id, operation_id: queued_operations.append(
+            (queued_test_id, operation_id)
+        ),
+    )
+
+    response = await client.post(f"/api/v1/tests/{test_id}/questions")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "generating"
+    assert body["currentStage"] == "questions"
+    assert body["questionSet"] is None
+    assert len(queued_operations) == 1
+    assert queued_operations[0][0] == test_id
+    assert notifications.published == [test_id]
 
 
 async def test_generation_requires_an_openrouter_api_key_without_starting_work(
@@ -265,6 +301,83 @@ async def test_confirmation_applies_edits_and_additions_in_submitted_order(
     ]
     assert items[2]["id"] not in {item["id"] for item in original}
     UUID(items[2]["id"])
+
+
+async def test_suggests_one_question_from_direction_without_changing_the_draft(
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+) -> None:
+    client, model, notifications = generation_client
+    test_id = await configured_test(client)
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    before = generated.json()
+    model.response = GeneratedQuestionSet(
+        questions=[GeneratedQuestion(text="  Can I use the sensor during heavy rain?  ")]
+    )
+    notifications.published.clear()
+
+    response = await client.post(
+        f"/api/v1/tests/{test_id}/questions/suggestion",
+        json={
+            "direction": "Ask about outdoor use in bad weather.",
+            "existingQuestions": [
+                *[item["text"] for item in before["questionSet"]["items"]],
+                "A locally added question?",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "Can I use the sensor during heavy rain?"}
+    content = cast(list[dict[str, str]], model.invocations[-1][1].content)
+    rendered = content[0]["text"]
+    assert "USER DIRECTION\nAsk about outdoor use in bad weather." in rendered
+    assert "EXISTING QUESTIONS TO AVOID" in rendered
+    assert "A locally added question?" in rendered
+    current = (await client.get(f"/api/v1/tests/{test_id}")).json()
+    assert current["questionSet"] == before["questionSet"]
+    assert current["stateVersion"] == before["stateVersion"]
+    assert notifications.published == []
+
+
+async def test_question_suggestion_requires_a_direction_and_editable_draft(
+    app: FastAPI,
+    generation_client: tuple[AsyncClient, FakeStructuredChatModel, RecordingNotifications],
+) -> None:
+    client, model, _ = generation_client
+    test_id = await configured_test(client)
+    generated = await client.post(f"/api/v1/tests/{test_id}/questions")
+    invocation_count = len(model.invocations)
+
+    app.state.settings.openrouter_api_key = SecretStr("   ")
+    unconfigured = await client.post(
+        f"/api/v1/tests/{test_id}/questions/suggestion",
+        json={"direction": "Ask about recovery.", "existingQuestions": []},
+    )
+    assert unconfigured.status_code == 503
+    assert unconfigured.json()["error"]["code"] == "openrouter_api_key_required"
+    assert len(model.invocations) == invocation_count
+    app.state.settings.openrouter_api_key = SecretStr("test-openrouter-key")
+
+    blank = await client.post(
+        f"/api/v1/tests/{test_id}/questions/suggestion",
+        json={"direction": "   ", "existingQuestions": []},
+    )
+    assert blank.status_code == 422
+    assert blank.json()["error"]["code"] == "question_direction_required"
+    assert len(model.invocations) == invocation_count
+
+    items = review_items(generated.json()["questionSet"])
+    confirmed = await client.post(
+        f"/api/v1/tests/{test_id}/questions/confirm",
+        json={"items": items},
+    )
+    assert confirmed.status_code == 200
+    locked = await client.post(
+        f"/api/v1/tests/{test_id}/questions/suggestion",
+        json={"direction": "Ask about recovery.", "existingQuestions": []},
+    )
+    assert locked.status_code == 409
+    assert locked.json()["error"]["code"] == "question_set_not_editable"
 
 
 @pytest.mark.parametrize(

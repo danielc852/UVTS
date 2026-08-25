@@ -243,6 +243,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tests/{test_id}/questions/suggestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suggest Test Question */
+        post: operations["suggest_test_question_api_v1_tests__test_id__questions_suggestion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tests/{test_id}/report/retry": {
         parameters: {
             query?: never;
@@ -503,6 +520,18 @@ export interface components {
          * @enum {string}
          */
         QuestionSetStatus: "draft" | "confirmed";
+        /** QuestionSuggestionRequest */
+        QuestionSuggestionRequest: {
+            /** Direction */
+            direction: string;
+            /** Existingquestions */
+            existingQuestions?: string[];
+        };
+        /** QuestionSuggestionResponse */
+        QuestionSuggestionResponse: {
+            /** Text */
+            text: string;
+        };
         /** ReadyResponse */
         ReadyResponse: {
             /**
@@ -1403,6 +1432,86 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    suggest_test_question_api_v1_tests__test_id__questions_suggestion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionSuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionSuggestionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
