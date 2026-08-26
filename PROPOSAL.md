@@ -175,6 +175,20 @@ docker compose --env-file .env -f infra/compose.yaml down
 
 This removes the containers but keeps their data in Docker volumes.
 
+### 6. Clear all local history and start again
+
+The normal stop command above deliberately preserves workspace history, uploaded
+documents, database records, and queued state. To permanently remove that local data,
+make sure UVTS is stopped, then run:
+
+```sh
+docker compose --env-file .env -f infra/compose.yaml down --volumes
+```
+
+This deletes the PostgreSQL, Redis, and private-document Docker volumes used by UVTS.
+The deletion cannot be undone. The next start creates empty volumes and opens UVTS as
+a new workspace. The `.env` file and its OpenRouter API key are not deleted.
+
 ## Architecture and key decisions
 
 The browser app uses React and TypeScript. The API uses FastAPI. Celery handles slow
