@@ -171,6 +171,22 @@ export const workspaceFixtures = {
       status: index < 4 ? 'complete' : index === 4 ? 'checking' : 'waiting',
     })),
   },
+  'report-generating': {
+    ...baseWorkspace,
+    id: 'report-generating',
+    status: 'evaluating',
+    currentStage: 'evaluation',
+    configuration: productConfiguration,
+    questionSet: confirmedQuestionSet,
+    questions: repeatedQuestions,
+    manual,
+    evaluationSource: source,
+    evaluation: repeatedQuestions.map((question, index) => ({
+      questionId: question.id,
+      status: index === 6 ? 'failed' : 'complete',
+      error: index === 6 ? 'The question could not be checked.' : undefined,
+    })),
+  },
   'report-ready': {
     ...baseWorkspace,
     id: 'report-ready',

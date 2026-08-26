@@ -13,7 +13,7 @@ export function getStageState(
   if (workspace.status === 'generating' && (stage === 'configuration' || stage === 'questions')) {
     return 'working';
   }
-  if (stage === 'evaluation' && workspace.evaluation.some((item) => item.status === 'checking' || item.status === 'waiting')) {
+  if (stage === 'evaluation' && workspace.status === 'evaluating') {
     return 'working';
   }
   return 'active';

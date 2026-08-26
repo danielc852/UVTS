@@ -44,6 +44,15 @@ describe('WorkspacePage', () => {
     expect(screen.getByRole('heading', { name: 'Main gaps' })).toBeInTheDocument();
   });
 
+  it('shows report generation after every question finishes without row retry buttons', async () => {
+    renderApp('/tests/report-generating');
+
+    expect(await screen.findByText('All questions have been checked. Generating the report…')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Generating report' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry question/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry failed questions' })).not.toBeInTheDocument();
+  });
+
   it('shows confirmed Product setup as immutable when revisited', async () => {
     const user = userEvent.setup();
     renderApp('/tests/upload-ready');

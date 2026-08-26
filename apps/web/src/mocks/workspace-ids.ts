@@ -8,6 +8,7 @@ const mockWorkspaceIds = new Set([
   'legacy-questions',
   'upload-ready',
   'evaluating',
+  'report-generating',
   'report-ready',
   'upload-error',
   'generation-error',

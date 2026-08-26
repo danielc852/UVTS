@@ -8,7 +8,6 @@ import { useMemo } from 'react';
 import {
   EvaluationRequestError,
   retryFailedQuestions,
-  retryQuestion,
   startEvaluation,
 } from './api';
 import { storeWorkspace } from '../../entities/workspace/query';
@@ -87,6 +86,8 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
 
   const { completed, failed } = summarizeEvaluation(evaluation);
   const hasStarted = evaluation.length > 0;
+  const isGeneratingReport =
+    state === 'working' && hasStarted && questions.length > 0 && completed === questions.length;
 
   return (
     <StageSection
@@ -117,17 +118,20 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
       {hasStarted ? (
         <>
           <ProgressBar
-            label="Questions checked"
+            label={isGeneratingReport ? 'Generating report' : 'Questions checked'}
             value={completed}
             max={questions.length || 1}
-            hasValueLabel
+            hasValueLabel={!isGeneratingReport}
+            isIndeterminate={isGeneratingReport}
             formatValueLabel={(value, max) => `${value} of ${max}`}
           />
           <p aria-live="polite">
-            {completed} of {questions.length} questions checked
+            {isGeneratingReport
+              ? 'All questions have been checked. Generating the report…'
+              : `${completed} of ${questions.length} questions checked`}
           </p>
           <ol className="evaluation-list">
-            {questions.map((question, index) => {
+            {questions.map((question) => {
               const item = evaluationByQuestion.get(question.id);
               const status = item?.status ?? 'waiting';
               return (
@@ -137,22 +141,11 @@ export function EvaluationSection({ state, questions, evaluation, testId }: Eval
                     label={statusLabels[status]}
                     variant={statusVariants[status]}
                   />
-                  {status === 'failed' ? (
-                    <Button
-                      label={`Retry question ${index + 1}`}
-                      variant="ghost"
-                      size="sm"
-                      isDisabled={isSubmitting || state === 'working'}
-                      onClick={() =>
-                        actionMutation.mutate(() => retryQuestion(testId, question.id))
-                      }
-                    />
-                  ) : null}
                 </li>
               );
             })}
           </ol>
-          {failed > 0 ? (
+          {failed > 0 && !isGeneratingReport ? (
             <Button
               label="Retry failed questions"
               variant="secondary"
