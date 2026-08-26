@@ -134,12 +134,9 @@ select an idea, update the intended behavior, implement it, test the complete jo
 and refine it. I also reviewed diffs, contracts, and tests after changes instead of
 accepting generated code from its explanation alone.
 
-For recent changes, I also used focused Codex skills as an additional review step. For
-example, Code Simplifier helped improve the clarity and maintainability of recently
-changed code, while Vercel React Best Practices helped check the frontend for
-appropriate React patterns and performance risks. I treated their recommendations in
-the same way as other AI suggestions: I reviewed them against the product requirements
-and existing tests before deciding what to keep.
+For recent changes, I also used Codex skills such as Code Simplifier and Vercel React
+Best Practices to improve code quality and frontend performance. I reviewed each
+suggestion before applying it.
 
 Representative tasks included:
 
