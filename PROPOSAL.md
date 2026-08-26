@@ -164,7 +164,7 @@ useful model responses, but it is safer than presenting unsupported AI output as
 
 I used ChatGPT to explore product ideas, then chose the direction and scope myself. I
 asked AI to help turn the idea into a product specification before using Codex to
-implement the application in small tasks.
+implement the application in well-defined tasks.
 
 My usual workflow was simple:
 
@@ -223,31 +223,46 @@ timeout.
 For complex decisions, I also used multiple agents to review the code from different
 angles and research possible solutions in parallel. I compared their findings before
 choosing an approach; the agents provided options and evidence, but I made the final
-decision. I also used Code Simplifier and Vercel React Best Practices, but reviewed
-their suggestions before applying them.
+decision.
 
 One AI-generated integration was wrong. UVTS stored the OpenRouter timeout in seconds,
 but `ChatOpenRouter` treated the value as milliseconds. A configured 60-second timeout
-therefore became 60 milliseconds and caused slow retries. A direct provider request
-worked while the app's live smoke test failed, showing that the integration was the
-problem. I inspected the SDK, confirmed the behavior in the upstream
-[LangChain issue](https://github.com/langchain-ai/langchain/issues/39812), converted
-seconds to milliseconds, and added regression tests. The live structured-output test
-then passed with the correct 60,000-millisecond value.
+therefore became 60 milliseconds and caused slow retries. I found the problem by asking
+AI to review the code and report possible issues. It identified the unit mismatch and
+linked to an issue in the official LangChain GitHub repository. I did not accept that
+finding on its own: I opened and reviewed the upstream
+[LangChain issue](https://github.com/langchain-ai/langchain/issues/39812), compared it
+with the SDK and UVTS code path, and confirmed that it applied to this integration.
 
-This experience showed why I did not accept AI output without checking it. I reviewed
-code changes, error messages, workflow transitions, and tests. I used backend and
-frontend tests, linting, type checks, builds, contract checks, and a live provider test
-for the OpenRouter fix. A fresh Docker test of the complete real-service journey is
-still needed before calling the app release-ready.
+I then asked AI to propose a solution and reviewed the resulting change. The fix
+converts seconds to milliseconds at the SDK boundary, so 60 seconds is passed as 60,000
+milliseconds, and adds regression tests for the conversion. Before considering the fix
+complete, I manually reviewed the source and changed code, then ran a real
+structured-output request through the application. It completed successfully in 6.95
+seconds. I also confirmed that the focused regression tests and full API test suite
+passed. A fresh Docker test of the complete real-service journey is still needed before
+calling the app release-ready.
 
 ## Honest limitations
 
 - Results depend on model quality, availability, speed, and cost.
+- The AI judgments have not yet been measured against a benchmark of human-reviewed
+  manuals, so the false-positive and false-negative rates are unknown.
 - The concurrency limit applies to each evaluation job, not all users together.
 - Scanned PDFs, complex layouts, diagrams, and image-based information may be missed.
 - Local file storage needs to be replaced with secure production object storage.
+- The Docker setup still uses a development web server and local-development security
+  defaults; it is not a production deployment.
 - Anonymous sessions provide no accounts, teams, roles, or cross-device access.
+- `SESSION_SECRET` is presented as a required deployment setting, but the application
+  does not currently use it to sign or encrypt sessions. Before deployment, it should
+  either be connected to a real session-security mechanism or removed to avoid giving
+  a false sense of protection.
+- Anyone who can reach the application can create an anonymous session and trigger
+  paid AI requests. There is no login, per-user quota, global rate limit, or spending
+  limit to protect the OpenRouter account from misuse in a public deployment.
+- Rapid AI-assisted development may have left some duplicate responsibilities or
+  overlapping code that should be identified and simplified in a further review.
 - Coverage does not prove that instructions are correct, safe, current, clear, or
   legally compliant.
 - V1 is limited to 20 pages and 15 questions. It has no exports, version comparison,
@@ -273,4 +288,4 @@ manuals while controlling model context, latency, and cost.
 
 ## Time spent
 
-Just under 10 hours.
+10 hours.

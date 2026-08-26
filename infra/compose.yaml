@@ -80,7 +80,15 @@ services:
   worker:
     build:
       context: ..
-      dockerfile: infra/worker.Dockerfile
+      dockerfile: infra/api.Dockerfile
+    command:
+      [
+        "celery",
+        "-A",
+        "uvts_api.workers.celery_app:celery_app",
+        "worker",
+        "--loglevel=INFO",
+      ]
     environment: *api-environment
     depends_on:
       migrate:
