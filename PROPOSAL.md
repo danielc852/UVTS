@@ -162,49 +162,40 @@ useful model responses, but it is safer than presenting unsupported AI output as
 
 ## How I worked with AI
 
-I used ChatGPT as a discussion partner at the start of the project. We explored
-different product ideas and approaches, but I did not treat its suggestions as final
-decisions. I selected the useful ideas, combined them with my own understanding of the
-problem, and decided the product direction and scope.
+I used ChatGPT to explore product ideas, then chose the direction and scope myself. I
+asked AI to help turn the idea into a product specification before using Codex to
+implement the application in small tasks.
 
-Once the direction was clear, I asked AI to turn it into two separate text documents:
-a product specification and a UI/UX specification. I reviewed and refined both before
-asking Codex to build the first version with a multi-agent workflow. The agents worked
-on bounded parts of the product using the shared specifications, while I reviewed how
-the pieces fitted together.
+My usual workflow was simple:
 
-I broke the build into small tasks based on dependencies and risk. Each task had a
-clear outcome, key constraints, and a verification step before it was considered
-complete.
+1. Discuss an idea with AI.
+2. Choose the approach and describe the expected result.
+3. Use a short prompt for a small change, or Plan mode for a larger change.
+4. Review the code and test the complete user journey.
+5. Use any problems found as the next task.
 
-After the first draft was complete, I tested the full journey from product setup to
-the final report before adding more features. Problems found in that end-to-end test
-became the next iteration tasks. I continued the same loop for later work: discuss and
-select an idea, update the intended behavior, implement it, test the complete journey,
-and refine it. I also reviewed diffs, contracts, and tests after changes instead of
-accepting generated code from its explanation alone.
+When an idea was simple and limited to a small change, my prompts were often short.
+For example:
 
-For recent changes, I also used Codex skills such as Code Simplifier and Vercel React
-Best Practices to improve code quality and frontend performance. I reviewed each
-suggestion before applying it.
+> "Instead of sequential evaluation of questions by the agent, would it be better to
+> use a concurrent approach to improve efficiency?"
 
-Representative tasks included:
+I then asked Codex to check provider rate limits before making the change. From that
+discussion, we defined a limit of four concurrent model calls, safe retries, stable
+result ordering, and tests for failures and cancellation.
 
-- change the journey from manual-first to product setup, question confirmation, and
-  then manual upload;
-- add concurrent evaluation without losing progress, retries, cancellation safety, or
-  stable result order;
-- simplify the report UI and update its component tests;
-- diagnose the OpenRouter smoke-test timeout before changing code.
+For a refactor or workflow change involving both the frontend and backend, I used Plan
+mode before implementation. For example:
 
-For example, one successful task breakdown was: "Evaluate confirmed questions
-concurrently, with at most four model calls in flight. Preserve retries, cancellation
-safety, progress reporting, and stable result order. Add tests for the concurrency
-limit and failure paths, then run the complete evaluation journey."
+> "Use Plan mode to correct the question-generation workflow. After the user uploads
+> an image and starts question generation, move to the next section and show a
+> progress bar instead of leaving the user on the original page."
 
-These are summaries, not verbatim prompts. The approach that worked best was to give
-Codex one clear outcome, the important constraints, and a verification step, then
-check the resulting code rather than trust its explanation.
+Plan mode helped identify the required backend state change, frontend loading and
+failure states, and tests before any code was changed. I used the same process to
+improve the question flow, simplify the report, and investigate the OpenRouter
+timeout. I also used Code Simplifier and Vercel React Best Practices, but reviewed
+their suggestions before applying them.
 
 One AI-generated integration was wrong. UVTS stored the OpenRouter timeout in seconds,
 but `ChatOpenRouter` treated the value as milliseconds. A configured 60-second timeout
@@ -215,11 +206,11 @@ problem. I inspected the SDK, confirmed the behavior in the upstream
 seconds to milliseconds, and added regression tests. The live structured-output test
 then passed with the correct 60,000-millisecond value.
 
-I manually reviewed diffs, schemas, generated contracts, error messages, and workflow
-transitions. I also used backend unit and integration tests, frontend component tests,
-linting, type checks, builds, and contract checks. The OpenRouter fix received a live
-provider test. A fresh Docker test of the complete real-service journey is still
-needed before calling the app release-ready.
+This experience showed why I did not accept AI output without checking it. I reviewed
+code changes, error messages, workflow transitions, and tests. I used backend and
+frontend tests, linting, type checks, builds, contract checks, and a live provider test
+for the OpenRouter fix. A fresh Docker test of the complete real-service journey is
+still needed before calling the app release-ready.
 
 ## Honest limitations
 
