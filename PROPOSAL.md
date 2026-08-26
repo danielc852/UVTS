@@ -311,6 +311,10 @@ calling the app release-ready.
 ## Honest limitations
 
 - Results depend on model quality, availability, speed, and cost.
+- Question evaluation may occasionally fail even when the manual contains the answer,
+  because the model may return evidence that does not exactly match the extracted manual
+  text. Possible improvements include changing to a more reliable model or adding a
+  separate evaluation agent to check and correct the first agent's result.
 - The AI judgments have not yet been measured against a benchmark of human-reviewed
   manuals, so the false-positive and false-negative rates are unknown.
 - The concurrency limit applies to each evaluation job, not all users together.
