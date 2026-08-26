@@ -24,6 +24,9 @@ says documentation should stay in sync with changing product data. Another
 shows customers asking questions against manuals. Together, these suggest a useful
 quality loop: Pergamon helps teams create and maintain manuals; UVTS asks realistic
 user questions and checks whether the manual contains the information they need.
+In that sense, UVTS acts as a pre-publication testing agent: it simulates the
+questions Pergami users may ask, identifies answers the manual cannot support, and
+gives writers page-level evidence before those gaps reach customers.
 UVTS does not check legal compliance, but it can highlight practical gaps before a
 manual reaches customers.
 
@@ -48,8 +51,8 @@ The first goal is simply to test whether UVTS can find useful coverage gaps.
 ## How to run it
 
 You need Docker Desktop (or Docker Engine with Docker Compose), `make`, an OpenRouter
-API key, and free local ports `5173` and `8000`. The first build also requires an
-internet connection.
+API key with access or credit for the configured models, and free local ports `5173`
+and `8000`. The first build also requires an internet connection.
 
 From the repository root, create the environment file and add your OpenRouter key:
 
@@ -151,6 +154,11 @@ Representative tasks included:
 - simplify the report UI and update its component tests;
 - diagnose the OpenRouter smoke-test timeout before changing code.
 
+For example, one successful task breakdown was: "Evaluate confirmed questions
+concurrently, with at most four model calls in flight. Preserve retries, cancellation
+safety, progress reporting, and stable result order. Add tests for the concurrency
+limit and failure paths, then run the complete evaluation journey."
+
 These are summaries, not verbatim prompts. The approach that worked best was to give
 Codex one clear outcome, the important constraints, and a verification step, then
 check the resulting code rather than trust its explanation.
@@ -184,20 +192,21 @@ needed before calling the app release-ready.
 
 ## What's next
 
-With one more month, I would focus on improving the AI workflow. First, I would review
-and refine the agent prompts using real examples and human-reviewed results. The goal
-would be to make generated questions and evaluations more relevant, consistent, and
-easy to verify.
+With one more month, I would first build a small benchmark from real manuals, realistic
+user questions, and human-reviewed coverage decisions. I would use it to measure false
+positives and false negatives, refine the agent prompts, and make the results more
+consistent and easy to verify instead of judging improvements by intuition alone.
 
-Next, I would expand question generation so users could choose the types of questions
-they want, such as basic usage, cross-section, troubleshooting, or edge-case questions.
-This would give writers more control over what UVTS tests instead of relying on one
-general question-generation approach.
+Next, I would close the loop with authoring. A writer could turn a missing or partly
+covered result into a suggested content task, update the manual, and compare the next
+version to confirm that the gap was resolved. I would also let writers choose question
+types such as basic usage, cross-section, troubleshooting, or edge cases so the test
+reflects the product's actual risks.
 
-Finally, I would add a retrieval-augmented generation (RAG) system. Rather than sending
-the whole manual to the evaluator, UVTS would retrieve the most relevant sections for
-each question and evaluate those sections with page references. This would allow UVTS
-to support much larger manuals while controlling model context, latency, and cost.
+Finally, once real usage showed that manual size was the limiting factor, I would add
+a retrieval-augmented generation (RAG) system. UVTS would retrieve the most relevant
+sections for each question and evaluate them with page references, allowing larger
+manuals while controlling model context, latency, and cost.
 
 ## Time spent
 
