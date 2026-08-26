@@ -116,10 +116,23 @@ useful model responses, but it is safer than presenting unsupported AI output as
 
 ## How I worked with AI
 
-I used Codex as my only AI coding tool. I first asked it to inspect the product
-documents, code, and tests. I then split the work into small tasks, implemented one
-behavior at a time, and reviewed the diff and contracts after each change. Tests acted
-as constraints so the model did not invent product behavior from a short prompt.
+I used ChatGPT as a discussion partner at the start of the project. We explored
+different product ideas and approaches, but I did not treat its suggestions as final
+decisions. I selected the useful ideas, combined them with my own understanding of the
+problem, and decided the product direction and scope.
+
+Once the direction was clear, I asked AI to turn it into two separate text documents:
+a product specification and a UI/UX specification. I reviewed and refined both before
+asking Codex to build the first version with a multi-agent workflow. The agents worked
+on bounded parts of the product using the shared specifications, while I reviewed how
+the pieces fitted together.
+
+After the first draft was complete, I tested the full journey from product setup to
+the final report before adding more features. Problems found in that end-to-end test
+became the next iteration tasks. I continued the same loop for later work: discuss and
+select an idea, update the intended behavior, implement it, test the complete journey,
+and refine it. I also reviewed diffs, contracts, and tests after changes instead of
+accepting generated code from its explanation alone.
 
 Representative tasks included:
 
