@@ -64,6 +64,16 @@ make down
 This removes the containers but keeps their data in Docker volumes. Use `make logs`
 to follow the service logs.
 
+`make dev` deliberately reads the OpenRouter key from the root `.env` file, even
+if the current shell has an empty variable with the same name. Startup stops with
+a clear error when the key is missing instead of launching question generation in
+an unusable state.
+
+Workspace history, uploaded documents, and queued state persist across restarts in
+Docker volumes. To erase all local UVTS data and start from a blank workspace, stop
+the app and run `docker compose --env-file .env -f infra/compose.yaml down --volumes`.
+This reset cannot be undone.
+
 Manual questions are evaluated concurrently to reduce waiting time. The worker runs
 up to four model calls at once by default; set `EVALUATION_MAX_CONCURRENCY` in `.env`
 to an integer from 1 to 15 when provider limits require a different value. Rate-limit

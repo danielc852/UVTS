@@ -7,13 +7,13 @@ setup:
 	cd apps/web && pnpm install --frozen-lockfile
 
 dev:
-	docker compose --env-file .env -f infra/compose.yaml up --build
+	env -u OPENROUTER_API_KEY docker compose --env-file .env -f infra/compose.yaml up --build
 
 down:
-	docker compose --env-file .env -f infra/compose.yaml down
+	env -u OPENROUTER_API_KEY docker compose --env-file .env -f infra/compose.yaml down
 
 logs:
-	docker compose --env-file .env -f infra/compose.yaml logs -f
+	env -u OPENROUTER_API_KEY docker compose --env-file .env -f infra/compose.yaml logs -f
 
 migrate:
 	cd apps/api && uv run alembic upgrade head
