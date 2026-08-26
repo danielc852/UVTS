@@ -57,3 +57,29 @@ structure on narrow screens and for assistive technology.
 Component and workspace tests were updated for the simplified headings and navigation,
 and report tests cover filtering, linked results, retry behavior, and the visible
 coverage breakdown.
+
+## 4. AI over-engineering in early generations — review safeguard needed
+
+Early AI-generated implementations often add more layers, files, abstractions, and
+configuration than the first release needs. Even when the code works, this can make
+the repository harder to understand, review, test, and change. It can also hide
+duplicate code or leave unused parts behind after the design changes.
+
+For each early implementation generation, request a clean, structured repository for
+review before accepting the result. The review should show:
+
+- the repository tree, with each main folder and important file explained in plain
+  words;
+- what was added, moved, merged, simplified, or removed during cleanup, and why;
+- where each product responsibility belongs, so the same job is not implemented in
+  several places;
+- which abstractions and dependencies are necessary now, rather than only useful for
+  an imagined future;
+- the tests or checks that prove cleanup did not change the intended behavior; and
+- any remaining complexity that could not safely be removed.
+
+The final explanation must avoid technical shorthand and state what the cleaned
+structure means for the product. This gives the reviewer a practical way to verify
+that the outcome matches the expected first-release scope: every major part has one
+clear purpose, unnecessary machinery is removed, and a new contributor can find
+where a change belongs without tracing many layers.

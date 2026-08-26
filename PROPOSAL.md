@@ -174,6 +174,30 @@ My usual workflow was simple:
 4. Review the code and test the complete user journey.
 5. Use any problems found as the next task.
 
+I also learned that AI commonly over-engineers the first few versions of a solution.
+It may create extra layers, files, settings, or reusable systems before the product
+needs them. I solved this by adding a repeatable cleanup checkpoint instead of judging
+only whether the latest feature worked. I asked AI to clean and structure the
+repository for review, show its tree, and explain what each main folder and important
+file was responsible for. I also asked it to identify what it had removed, merged,
+moved, or simplified, and why those changes made the project easier to maintain.
+
+The resulting top-level structure is deliberately small: `apps/web` contains what the
+user sees in the browser, `apps/api` contains the application rules and background AI
+work, `contracts` keeps the browser and API speaking the same language, `infra`
+contains the files needed to run the services together, and `docs` explains important
+technical decisions. Product documents remain at the repository root so reviewers can
+find the purpose and scope before reading implementation details.
+
+After cleanup, I checked that each responsibility had one clear home, that similar
+logic was not repeated in several places, and that abstractions supported a current
+requirement rather than an imagined future one. I used tests and the complete user
+journey to confirm that simplifying the structure had not changed the product's
+behavior. Finally, I asked AI to explain the result in plain words. This let me verify
+the outcome against my expectation even when I did not need to understand every
+technical detail: I could see what each part did, why it existed, and where a future
+change should go.
+
 When an idea was simple and limited to a small change, my prompts were often short.
 For example:
 
