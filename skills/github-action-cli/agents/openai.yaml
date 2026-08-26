@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Actions CLI"
+  short_description: "Inspect and update GitHub Actions dependencies"
+  default_prompt: "Use $github-action-cli to check this repository for outdated GitHub Actions."
