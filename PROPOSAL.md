@@ -127,6 +127,10 @@ asking Codex to build the first version with a multi-agent workflow. The agents 
 on bounded parts of the product using the shared specifications, while I reviewed how
 the pieces fitted together.
 
+I broke the build into small tasks based on dependencies and risk. Each task had a
+clear outcome, key constraints, and a verification step before it was considered
+complete.
+
 After the first draft was complete, I tested the full journey from product setup to
 the final report before adding more features. Problems found in that end-to-end test
 became the next iteration tasks. I continued the same loop for later work: discuss and
