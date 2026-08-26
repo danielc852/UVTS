@@ -64,36 +64,62 @@ final set. The first goal is simply to test whether UVTS can find useful coverag
 
 ## How to run it
 
-You need Docker Desktop (or Docker Engine with Docker Compose), `make`, an OpenRouter
-API key with access or credit for the configured models, and free local ports `5173`
-and `8000`. The first build also requires an internet connection.
+You need Git, Docker Desktop (or Docker Engine with Docker Compose), an OpenRouter API
+key with access or credit for the configured models, and free local ports `5173` and
+`8000`. Docker must be running, and the first build requires an internet connection.
 
-From the repository root, create the environment file and add your OpenRouter key:
+### 1. Download and open the repository
+
+Cloning is recommended because it preserves the commit history required for this
+assessment.
+
+On macOS or Linux, open Terminal and run:
 
 ```sh
+git clone https://github.com/danielc852/UVTS.git
+cd UVTS
 cp .env.example .env
 ```
 
-In `.env`:
+On Windows, open PowerShell and run:
+
+```powershell
+git clone https://github.com/danielc852/UVTS.git
+Set-Location UVTS
+Copy-Item .env.example .env
+```
+
+If you received the repository as a ZIP that includes the `.git` folder, extract it,
+open Terminal or PowerShell in the extracted folder containing `PROPOSAL.md`, and run
+only the platform-specific copy command above.
+
+### 2. Configure the model connection
+
+Open the new `.env` file in a text editor and replace the empty
+`OPENROUTER_API_KEY` value:
 
 ```dotenv
 OPENROUTER_API_KEY=your-openrouter-api-key
 ```
 
-Start Docker, then run:
+### 3. Start the application
+
+From the repository folder, run the same command on macOS, Linux, or Windows:
 
 ```sh
-make dev
+docker compose --env-file .env -f infra/compose.yaml up --build
 ```
 
 Wait for the web app, API, worker, PostgreSQL, and Redis to start. Then open
 [http://localhost:5173](http://localhost:5173). The API runs at
 [http://localhost:8000](http://localhost:8000).
 
-To stop the app, press `Ctrl+C`, then run:
+### 4. Stop the application
+
+In the terminal running UVTS, press `Ctrl+C`, then run:
 
 ```sh
-make down
+docker compose --env-file .env -f infra/compose.yaml down
 ```
 
 This removes the containers but keeps their data in Docker volumes.
