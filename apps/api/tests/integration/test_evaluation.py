@@ -205,6 +205,7 @@ async def test_evaluation_runs_model_calls_up_to_configured_concurrency(
     fake.responses[AtomicEvaluationOutput].extend(found_output() for _ in range(5))
     active_calls = 0
     maximum_active_calls = 0
+    overlap_observed = asyncio.Event()
 
     async def track_overlap(
         schema: type[BaseModel],
@@ -216,8 +217,12 @@ async def test_evaluation_runs_model_calls_up_to_configured_concurrency(
             return
         active_calls += 1
         maximum_active_calls = max(maximum_active_calls, active_calls)
-        await asyncio.sleep(0.01)
-        active_calls -= 1
+        if active_calls == 2:
+            overlap_observed.set()
+        try:
+            await asyncio.wait_for(overlap_observed.wait(), timeout=1)
+        finally:
+            active_calls -= 1
 
     fake.on_invoke = track_overlap
 

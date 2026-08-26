@@ -13,7 +13,7 @@ from uvts_api.core.config import get_settings
 def _alembic_config(database_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
     # Alembic's environment reads the application settings, so point it at an
     # isolated database before importing each migration revision.
-    monkeypatch.setenv("UVTS_DATABASE_URL", f"sqlite+aiosqlite:///{database_path}")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{database_path}")
     get_settings.cache_clear()
     config = Config(str(Path(__file__).parents[2] / "alembic.ini"))
     config.set_main_option(
