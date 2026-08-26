@@ -12,6 +12,8 @@ can contain all its planned sections but still fail to explain how to set up, us
 fix a product. Editors usually review the document section by section. Users instead
 arrive with goals, limited context, and unexpected problems.
 
+### Research and inspiration
+
 Pergamon's public material led me to this idea. I reviewed its website, its AI
 Assembly tutorial video, and its public LinkedIn posts. The website and tutorial
 present manuals as structured systems that can be assembled with AI rather than as
