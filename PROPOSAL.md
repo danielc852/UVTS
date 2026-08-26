@@ -194,7 +194,12 @@ mode before implementation. For example:
 Plan mode helped identify the required backend state change, frontend loading and
 failure states, and tests before any code was changed. I used the same process to
 improve the question flow, simplify the report, and investigate the OpenRouter
-timeout. I also used Code Simplifier and Vercel React Best Practices, but reviewed
+timeout.
+
+For complex decisions, I also used multiple agents to review the code from different
+angles and research possible solutions in parallel. I compared their findings before
+choosing an approach; the agents provided options and evidence, but I made the final
+decision. I also used Code Simplifier and Vercel React Best Practices, but reviewed
 their suggestions before applying them.
 
 One AI-generated integration was wrong. UVTS stored the OpenRouter timeout in seconds,
