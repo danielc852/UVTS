@@ -41,12 +41,26 @@ UVTS provides one guided workflow:
 5. Review a report showing covered, partly covered, and missing information, with
    supporting page references.
 
-The first version is intentionally narrow. It does not generate manuals or certify
-legal compliance. It does not support scanned PDFs because reliable OCR and page
-evidence would add significant complexity. Report downloads, manual-version
-comparison, and team approval tools are also out of scope. Draft questions can be
-edited or added before the writer confirms and locks the final set.
-The first goal is simply to test whether UVTS can find useful coverage gaps.
+The first version is intentionally narrow. The following are deliberately out of
+scope:
+
+- **Manual generation and legal compliance:** UVTS finds practical coverage gaps; it
+  does not write replacement content or certify that a manual meets regulations.
+- **Retrieval-augmented generation (RAG):** V1 evaluates the complete extracted text
+  of a manual and therefore limits uploads to 20 pages. Building and validating a
+  retrieval layer would add complexity before the core idea has been proven useful.
+- **Autonomous multi-agent generation:** UVTS has three bounded AI stages—question
+  generation, per-question evaluation, and report synthesis—but they follow a fixed
+  workflow. The agents do not plan, delegate to one another, or run open-ended tool
+  loops. This keeps state transitions, failures, and outputs easier to verify.
+- **Scanned and visually complex manuals:** reliable OCR, diagram understanding, and
+  page-level visual evidence require a separate evaluation approach.
+- **Broader product workflow:** report downloads, manual-version comparison, team
+  approvals, and generated authoring tasks are deferred until the coverage test itself
+  is validated.
+
+Draft questions can still be edited or added before the writer confirms and locks the
+final set. The first goal is simply to test whether UVTS can find useful coverage gaps.
 
 ## How to run it
 
