@@ -12,8 +12,10 @@ can contain all its planned sections but still fail to explain how to set up, us
 fix a product. Editors usually review the document section by section. Users instead
 arrive with goals, limited context, and unexpected problems.
 
-Pergamon's public material led me to this idea. Its website presents manuals as
-structured systems rather than one-off documents. A
+Pergamon's public material led me to this idea. I reviewed its website, its AI
+Assembly tutorial video, and its public LinkedIn posts. The website and tutorial
+present manuals as structured systems that can be assembled with AI rather than as
+one-off documents. A
 [LinkedIn post](https://www.linkedin.com/posts/pergamon-labs_pergamonlabs-technicaldocumentation-ai-activity-7457275554526928897-8s4e)
 says documentation should stay in sync with changing product data. Another
 [post about Pergami](https://www.linkedin.com/posts/pergamon-labs_productupdate-pergamon-pergamiai-activity-7422486444318994432-F-lT)
