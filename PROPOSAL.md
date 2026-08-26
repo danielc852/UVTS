@@ -124,12 +124,34 @@ only the platform-specific copy command above.
 
 ### 3. Configure the model connection
 
-Open the new `.env` file in a text editor and replace the empty
-`OPENROUTER_API_KEY` value:
+Open the new `.env` file with the command for your operating system.
+
+On macOS, open it in TextEdit:
+
+```sh
+open -e .env
+```
+
+On Linux, open it in the Nano terminal editor:
+
+```sh
+nano .env
+```
+
+On Windows, open it in Notepad from PowerShell:
+
+```powershell
+notepad .env
+```
+
+If Visual Studio Code is installed, `code .env` can be used on any platform instead.
+Replace the empty `OPENROUTER_API_KEY` value, then save and close the file:
 
 ```dotenv
 OPENROUTER_API_KEY=your-openrouter-api-key
 ```
+
+Do not commit or share the `.env` file because it contains your private API key.
 
 ### 4. Start the application
 
