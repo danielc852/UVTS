@@ -315,6 +315,8 @@ calling the app release-ready.
   because the model may return evidence that does not exactly match the extracted manual
   text. Possible improvements include changing to a more reliable model or adding a
   separate evaluation agent to check and correct the first agent's result.
+- Retrying report generation after it fails is not currently working reliably. A user
+  may need to start a new test to generate the report.
 - The AI judgments have not yet been measured against a benchmark of human-reviewed
   manuals, so the false-positive and false-negative rates are unknown.
 - The concurrency limit applies to each evaluation job, not all users together.
