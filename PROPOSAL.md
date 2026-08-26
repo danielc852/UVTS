@@ -68,7 +68,18 @@ You need Git, Docker Desktop (or Docker Engine with Docker Compose), an OpenRout
 key with access or credit for the configured models, and free local ports `5173` and
 `8000`. Docker must be running, and the first build requires an internet connection.
 
-### 1. Install and start Docker Desktop
+### 1. Install the required tools
+
+Git is required for the recommended cloning method. If Git is not already installed,
+download it from the official [Git installation page](https://git-scm.com/install/),
+follow the instructions for your operating system, and verify the installation:
+
+```sh
+git --version
+```
+
+Git is not required if you received the repository as a ZIP file, although cloning is
+recommended because it preserves the commit history used for this assessment.
 
 If Docker Desktop is not already installed, download it from the official
 [Docker Desktop download page](https://www.docker.com/products/docker-desktop/) and
