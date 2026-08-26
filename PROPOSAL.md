@@ -122,7 +122,10 @@ browser refetches the current state from the API instead of treating the notific
 as data. If a notification is missed or the browser reconnects, the durable state is
 still available in PostgreSQL. This avoids long-running HTTP requests and makes
 recovery and retries safer, but it adds the operational cost of running a database,
-Redis, and a worker.
+Redis, and a worker. This separation also provides a path to larger customer-support
+workloads because API and worker capacity can scale independently. Production use
+would still require shared object storage, global concurrency controls, and
+tenant-level quotas.
 
 ### 3. Verified AI output
 
