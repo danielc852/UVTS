@@ -68,7 +68,16 @@ You need Git, Docker Desktop (or Docker Engine with Docker Compose), an OpenRout
 key with access or credit for the configured models, and free local ports `5173` and
 `8000`. Docker must be running, and the first build requires an internet connection.
 
-### 1. Download and open the repository
+### 1. Install and start Docker Desktop
+
+If Docker Desktop is not already installed, download it from the official
+[Docker Desktop download page](https://www.docker.com/products/docker-desktop/) and
+follow the installation instructions for your operating system. Open Docker Desktop
+after installation and wait until it reports that Docker is running before continuing.
+
+Linux users may install Docker Engine with the Docker Compose plugin instead.
+
+### 2. Download and open the repository
 
 Cloning is recommended because it preserves the commit history required for this
 assessment.
@@ -93,7 +102,7 @@ If you received the repository as a ZIP that includes the `.git` folder, extract
 open Terminal or PowerShell in the extracted folder containing `PROPOSAL.md`, and run
 only the platform-specific copy command above.
 
-### 2. Configure the model connection
+### 3. Configure the model connection
 
 Open the new `.env` file in a text editor and replace the empty
 `OPENROUTER_API_KEY` value:
@@ -102,7 +111,7 @@ Open the new `.env` file in a text editor and replace the empty
 OPENROUTER_API_KEY=your-openrouter-api-key
 ```
 
-### 3. Start the application
+### 4. Start the application
 
 From the repository folder, run the same command on macOS, Linux, or Windows:
 
@@ -114,7 +123,7 @@ Wait for the web app, API, worker, PostgreSQL, and Redis to start. Then open
 [http://localhost:5173](http://localhost:5173). The API runs at
 [http://localhost:8000](http://localhost:8000).
 
-### 4. Stop the application
+### 5. Stop the application
 
 In the terminal running UVTS, press `Ctrl+C`, then run:
 
