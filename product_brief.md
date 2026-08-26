@@ -1,15 +1,15 @@
 # UVTS Product Brief
 
-**Product name:** UVTS (User-View Testing Stimulation)  
-**Version:** First release  
-**Audience:** Non-technical writers and people who review product manuals  
-**Last updated:** 2026-08-23  
+**Product name:** UVTS (User-View Testing System)
+**Version:** First release
+**Audience:** Non-technical writers and people who review product manuals
+**Last updated:** 2026-08-26
 
 ## Product Idea
 
 UVTS helps writers find information that may be missing from a product or software manual.
 
-A writer uploads a PDF manual. UVTS creates realistic questions from different user viewpoints and checks whether the information needed for those questions exists in the manual. It then produces a simple report showing what is covered, partly covered, or missing.
+A writer adds a product image, a short product description, and a question count. UVTS uses that product context to create realistic questions. After the writer confirms the questions, they upload a PDF manual and UVTS checks whether the information needed for those questions exists in it. The report shows what is covered, partly covered, or missing.
 
 UVTS does not generate answers to the questions. It only checks whether the manual contains the required information.
 
@@ -30,40 +30,43 @@ Users do not need technical or AI knowledge.
 
 ## Main User Journey
 
-The complete workflow stays on one page:
+The application guides the writer through five stages in one workspace. It shows the
+current stage and lets the writer return to completed stages:
 
-1. Upload a PDF manual.
-2. Generate questions with the suggested or adjusted settings.
-3. Review the questions created by UVTS.
-4. Evaluate the reviewed questions against the manual.
-5. Read the report below the evaluation and improve the manual.
+1. Save a product image, product description, and question count.
+2. Generate, edit, add, review, and confirm the questions used by UVTS.
+3. Upload and validate a PDF manual.
+4. Evaluate the confirmed questions against the manual.
+5. Read the report and improve the manual.
 
 ## Core Features
 
-### 1. Document Box
+### 1. Product and Question Setup
+
+The writer provides:
+
+- **Product image:** One private image file of up to 10 MB
+- **Product description:** A non-empty explanation of the product and its purpose
+- **Question count:** Between 1 and 15 questions, with a suggested starting count of 9
+
+Question types, topics, viewpoints, and per-type splits are deferred until after the basic workflow is validated.
+
+### 2. User-Question Generation and Confirmation
+
+- UVTS creates realistic questions from the product image and description.
+- The manual is not required and is never included in question-generation input.
+- Questions must be clear, relevant, and different from each other.
+- Before confirmation, the writer can edit generated questions, add a question
+  manually or with an AI suggestion, or generate a new set.
+- The writer explicitly confirms the final questions.
+- Confirmed questions cannot change silently after the manual is uploaded.
+
+### 3. Document Box
 
 - Upload one readable PDF manual.
 - The manual can contain between 1 and 20 pages.
 - Password-protected and image-only scanned PDFs are not supported.
 - UVTS shows clear messages when a file cannot be used.
-
-### 2. Test Configuration
-
-The writer can select:
-
-- **Question types:** Basic, Cross-paragraph, and Edge-case
-- **Topics:** Setup, main tasks, settings, troubleshooting, limitations, safety, privacy, and data handling
-- **User viewpoints:** Beginner, Regular user, and Advanced user
-- **Question count:** Between 1 and 15 questions
-
-The suggested starting setup is 9 questions, with 3 questions of each type.
-
-### 3. User-Question Generation
-
-- UVTS creates realistic questions based on the manual and selected settings.
-- Every question has a type, topic, and user viewpoint.
-- Questions must be clear, relevant, and different from each other.
-- The writer can generate a new question set before starting the test.
 
 ### 4. Automated Testing
 
@@ -102,18 +105,21 @@ These results only measure whether information exists. They do not confirm that 
 - One manual per test
 - A maximum of 20 pages
 - A maximum of 15 questions
+- One product image of up to 10 MB
 - PDF files only
 - No scanned or image-only PDFs
-- No editing of individual generated questions
 - No report downloads
 - No comparison between manual versions
 - No team comments or approval process
 
 ## Privacy and Ease of Use
 
-- Manuals and reports must be kept private and protected.
-- Writers must be able to delete their manuals and test results.
-- Uploaded manuals must not be used to train general AI models without permission.
+- Anonymous sessions restrict tests, manuals, and reports to the browser session that
+  created them.
+- Writers can remove a manual and its connected evaluation and report data.
+- Manual contents are sent through the configured OpenRouter models for evaluation.
+  A deployment must choose provider data controls that match its privacy policy.
+- The first release does not yet define an automatic retention period.
 - Instructions, errors, and reports must use plain language.
 - Main actions must work with a keyboard and must not depend on color alone.
 
@@ -122,7 +128,7 @@ These results only measure whether information exists. They do not confirm that 
 The first release is successful when:
 
 - A writer can go from uploading a manual to reading a report without technical help.
-- UVTS creates the requested number and types of questions.
+- UVTS saves the product context and creates the requested number of questions.
 - Every result correctly shows whether information is found, partly found, or not found.
 - Results that find information include real page references.
 - The report clearly identifies useful improvements to the manual.

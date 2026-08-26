@@ -36,35 +36,30 @@ UVTS provides one guided workflow:
 
 The first version is intentionally narrow. It does not generate manuals or certify
 legal compliance. It does not support scanned PDFs because reliable OCR and page
-evidence would add significant complexity. Individual question editing, report
-downloads, manual-version comparison, and team approval tools are also out of scope.
+evidence would add significant complexity. Report downloads, manual-version
+comparison, and team approval tools are also out of scope. Draft questions can be
+edited or added before the writer confirms and locks the final set.
 The first goal is simply to test whether UVTS can find useful coverage gaps.
 
 ## How to run it
 
-### Requirements
+You need Docker Desktop (or Docker Engine with Docker Compose), `make`, an OpenRouter
+API key, and free local ports `5173` and `8000`. The first build also requires an
+internet connection.
 
-- Docker Desktop, or Docker Engine with Docker Compose
-- `make`
-- An OpenRouter API key
-- Free local ports `5173` and `8000`
-- Internet access for the first Docker build
-
-### Start the app
-
-From the repository root, create the environment file:
+From the repository root, create the environment file and add your OpenRouter key:
 
 ```sh
 cp .env.example .env
 ```
 
-Open `.env` and set your key:
+In `.env`:
 
 ```dotenv
 OPENROUTER_API_KEY=your-openrouter-api-key
 ```
 
-Start Docker, confirm that `docker compose version` works, and run:
+Start Docker, then run:
 
 ```sh
 make dev
@@ -80,21 +75,7 @@ To stop the app, press `Ctrl+C`, then run:
 make down
 ```
 
-This removes the containers but keeps data in named Docker volumes.
-
-### Optional checks
-
-Running repository checks on the host also requires Python 3.12 or later,
-[`uv`](https://docs.astral.sh/uv/), Node.js 22, and
-[`pnpm`](https://pnpm.io/installation).
-
-```sh
-make setup
-make check
-```
-
-`make check` runs linting, type checks, backend and frontend tests, the web build,
-theme verification, and the OpenAPI contract check.
+This removes the containers but keeps their data in Docker volumes.
 
 ## Architecture and key decisions
 
@@ -169,7 +150,7 @@ needed before calling the app release-ready.
 - Coverage does not prove that instructions are correct, safe, current, clear, or
   legally compliant.
 - V1 is limited to 20 pages and 15 questions. It has no exports, version comparison,
-  question editing, or completed real-service Docker verification.
+  or completed real-service Docker verification.
 
 ## What's next
 

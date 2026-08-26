@@ -1,7 +1,7 @@
 # UVTS Basic Implementation Roadmap
 
 **Target release:** Basic end-to-end workflow
-**Roadmap updated:** 2026-08-25
+**Roadmap updated:** 2026-08-26
 
 ## Manual-independent workflow implementation record
 
@@ -16,6 +16,9 @@ The following decisions are part of the compatibility and recovery contract:
 - **Question confirmation is a durable boundary.** A generated set is stored as a
   draft with its own ID and Product setup version. Confirmation preserves that exact
   ID and question text. Product setup and regeneration stay locked until Start over.
+- **Draft questions can be refined.** Before confirmation, users can edit generated
+  text and add a question manually or from an AI suggestion. Blank and duplicate
+  questions are rejected, and the complete draft remains limited to 15 questions.
 - **Legacy drafts are preserved.** Old manual-derived questions are marked
   `legacy_manual_unknown` and cannot be confirmed. Users must complete Product setup
   and generate a product-only set. A ready legacy manual remains attached.

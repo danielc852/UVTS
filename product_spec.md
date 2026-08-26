@@ -1,22 +1,25 @@
 # UVTS Product Specification
 
-**Product name:** UVTS (User-View Testing Stimulation)  
-**Version:** First release  
-**Audience:** Non-technical writers, product owners, designers, and development teams  
-**Last updated:** 2026-08-23  
+**Product name:** UVTS (User-View Testing System)
+**Version:** First release
+**Audience:** Non-technical writers, product owners, designers, and development teams
+**Last updated:** 2026-08-26
 
 ## 1. What is UVTS?
 
 UVTS helps a writer check whether a product or software manual contains the information needed for questions that real users may ask.
 
-The writer uploads a PDF manual and chooses the kinds of questions to test. UVTS creates sample user questions, checks whether the needed information exists in the manual, and produces a report. The report shows what information is present, incomplete, or missing.
+The writer supplies a product image, description, and question count. UVTS creates
+sample user questions, lets the writer refine and confirm them, then checks whether
+the needed information exists in an uploaded PDF manual. The report shows what
+information is present, incomplete, or missing.
 
 The first version of UVTS supports:
 
 - One PDF manual at a time
 - A manual of up to 20 pages
 - Up to 15 questions in one test
-- Three main question types
+- Product-context-based AI question generation, editing, addition, and confirmation
 - A basic results report with recommendations and follow-up questions
 
 ## 2. Why is this product needed?
@@ -50,13 +53,15 @@ Examples include:
 
 ## 5. Typical User Journey
 
-The complete journey stays on one page:
+The complete journey stays in one routed workspace. The application displays one
+stage at a time and lets the writer return to completed stages:
 
-1. The writer uploads a PDF manual and UVTS checks that it can be used.
-2. The writer generates questions using the suggested setup or adjusts the question settings.
-3. The writer reviews the complete question list.
-4. The writer starts the evaluation and watches its progress.
-5. UVTS reveals the report with results and suggested improvements below the evaluation.
+1. The writer uploads a product image, adds a description, and chooses the number of questions.
+2. UVTS generates questions from that product context without reading a manual.
+3. The writer edits or adds questions as needed, confirms the complete list, then
+   uploads a PDF manual.
+4. After the manual is ready, the writer starts the evaluation and watches its progress.
+5. UVTS opens the Report stage with results and suggested improvements.
 
 ## 6. Core Features
 
@@ -68,7 +73,8 @@ The Document Box is where the writer uploads the manual.
 
 - Upload one PDF file.
 - See the file name and number of pages.
-- Remove the file or replace it before starting a test.
+- Remove or replace the file. When results exist, the application explains and
+  confirms which manual-linked data will be removed.
 - See whether the file is being uploaded, checked, processed, or is ready.
 
 #### File rules
@@ -95,121 +101,63 @@ Examples:
 
 - A suitable PDF can be uploaded and reaches a Ready state.
 - A file with more than 20 pages is rejected with a clear message.
-- The writer cannot continue until the manual is ready.
+- Evaluation cannot start until the manual is ready.
 - UVTS remembers the page number of each piece of text so it can show evidence later.
-- Replacing the manual removes questions and results from the old manual.
+- Replacing the manual preserves the confirmed questions and removes evaluation and report data from the old manual.
 
 ### 6.2 Test Configuration
 
-Test Configuration lets the writer decide which questions UVTS should create.
+Test Configuration collects the minimum product context needed for question generation:
 
-The setup separates three ideas:
+- **Product image:** one file whose media type begins with `image/`, up to 10 MB
+- **Product description:** required free-form text describing the product and its purpose
+- **Number of questions:** an integer from 1 to 15, defaulting to 9
 
-- **Question type:** how the question should use the manual
-- **Topic:** what the question is about
-- **User viewpoint:** the kind of person asking the question
+No PDF manual is required to save this setup or generate questions. A saved image may be retained while the description or count is updated. After the writer confirms a generated question set, the setup and questions remain available when the PDF is replaced or removed.
 
-#### Question types
-
-The first version includes three types:
-
-1. **Basic question**
-   - Looks for a direct fact or a short set of steps.
-   - The answer will normally be found in one part of the manual.
-   - Example: “How do I reset my password?”
-2. **Cross-paragraph question**
-   - Needs information from two or more paragraphs, sections, or pages.
-   - Example: “Can I change the export format after turning on automatic backup?”
-3. **Edge-case question**
-   - Asks about an unusual situation, a limit, a failed step, or an exception.
-   - Example: “What should I do if setup stops before my device appears?”
-
-#### Topics
-
-The writer can choose one or more topics that are relevant to the manual:
-
-- Setup and requirements
-- Main product tasks
-- Settings and customization
-- Troubleshooting and recovery
-- Limits and unusual situations
-- Safety, privacy, and data handling
-
-If a topic does not appear to be relevant, UVTS can make it unavailable and explain why.
-
-#### User viewpoints
-
-The writer can choose one or more viewpoints:
-
-- **Beginner:** does not know the product or its special terms
-- **Regular user:** knows the common tasks but may need help with a problem
-- **Advanced user:** asks about settings, limits, and less common situations
-
-These viewpoints describe the sample users asking the questions. They are not UVTS account types.
-
-#### Number of questions
-
-- The writer can choose between 1 and 15 questions.
-- At least one question type, one topic, and one user viewpoint must be selected.
-- The writer can choose how many questions of each type to create.
-- The numbers for all question types must add up to the total.
-- If the writer does not choose a split, UVTS divides the questions as evenly as possible.
-
-The suggested starting setup is:
-
-- 9 questions in total
-- 3 Basic questions
-- 3 Cross-paragraph questions
-- 3 Edge-case questions
-- All relevant topics
-- Beginner, Regular user, and Advanced user viewpoints
+Question types, topics, user viewpoints, and per-type counts are advanced settings deferred from this basic version.
 
 #### The feature is complete when
 
 - The writer cannot request fewer than 1 or more than 15 questions.
-- The writer cannot continue when a required choice is missing.
-- A clear summary shows what questions will be created.
-- UVTS saves the choices used for each test.
+- An empty description, missing initial image, non-image file, empty file, or image over 10 MB is rejected with a clear message.
+- A clear summary shows the saved image, description status, and question count.
+- Saving creates or updates the draft test and makes question generation available.
 
 ### 6.3 User-Question Generation
 
-UVTS creates realistic questions based on the manual and the writer's choices.
-
-The UVTS AI agent uses Qwen3.8 27B through OpenRouter to create the question set.
+UVTS creates realistic questions from the saved product image, product description,
+and requested count through OpenRouter.
 
 #### Rules for good questions
 
 Each question must:
 
 - Sound like something a real user might ask.
-- Have one question type, one topic, and one user viewpoint.
-- Stay connected to the product and situations described in the manual.
+- Stay connected to the supplied product image and description.
 - Be different from the other questions in the same set.
-- Avoid mentioning page numbers or saying “according to the manual.”
+- Avoid answers, category metadata, page numbers, or references to a manual.
 - Use clear, natural language.
-
-Basic questions should focus on common needs. Cross-paragraph questions should bring together related information from different parts of the manual. Edge-case questions may ask about reasonable problems that the manual does not fully explain. This is important because the purpose of UVTS is to find missing information, not only to repeat what is already written.
 
 #### Reviewing the questions
 
 Before testing, the writer can:
 
 - Read the complete numbered question list.
-- See the type, topic, and viewpoint for every question.
+- Edit any draft question.
+- Add a question manually or ask AI to suggest one from a short direction.
 - Replace the whole set by selecting Generate Again.
-- Start the test when satisfied with the set.
+- Confirm the complete set when satisfied.
 
-Generating again replaces the current questions, so UVTS must show a warning first. Questions cannot change after the test starts. This keeps the results connected to the exact questions that were tested.
-
-Editing one question at a time is not included in the first version.
+Generating again replaces the current questions, so UVTS must show a warning first. Confirming locks the complete set and unlocks manual upload. Questions cannot change after confirmation unless the writer deliberately starts over. This keeps the manual and results connected to the exact questions that were approved.
 
 #### The feature is complete when
 
 - UVTS creates the requested number of questions.
-- The number of each question type matches the writer's setup.
-- Every question shows its type, topic, and viewpoint.
 - The set does not contain repeated questions.
-- The question set is saved when testing begins.
+- The writer can refine a draft without exceeding 15 questions or saving blank or
+  duplicate questions.
+- The confirmed question set is saved before manual upload begins.
 
 ### 6.4 Automated Testing
 
@@ -219,7 +167,7 @@ The UVTS AI agent uses Qwen3.8 27B through OpenRouter to perform this informatio
 
 #### How the test works
 
-For each question, UVTS:
+After the questions are confirmed and the manual is ready, UVTS:
 
 1. Lists the main pieces of information the question requires.
 2. Searches the manual for each piece of information.
@@ -256,9 +204,6 @@ UVTS shows:
 - The main result as a clear sentence: **X questions are covered out of Y total questions.** For example: **7 questions are covered out of 10 total questions.**
 - The number of questions where information was partly found
 - The number of questions where information was not found
-- Results grouped by question type
-- Results grouped by topic
-- Results grouped by user viewpoint
 
 Only questions marked Information found count toward X. The total is the number of generated questions in the test. The found, partly found, not found, and failed counts must add up to that total.
 
@@ -292,15 +237,13 @@ The report includes:
    - Manual name and number of pages
    - Test date
    - Number of questions
-   - Choices used to create the questions
+   - Saved product image filename, description status, and question count
    - Main result shown as **X questions are covered out of Y total questions.**
    - Counts for Information partly found and Information not found
 2. **Coverage overview**
-   - Results by question type
-   - Results by topic
-   - Results by user viewpoint
+   - Results grouped by information-coverage status
 3. **Question results**
-   - The question and its labels
+   - The question text
    - Information found, partly found, or not found
    - Information found and information missing
    - Page references
@@ -329,8 +272,8 @@ The writer can:
 
 - Read the full report in UVTS.
 - Open a result to see its explanation and page evidence.
-- Start another test with the same manual and different choices.
-- Run the same type of test after updating the manual.
+- Retry one failed question, all failed questions, or an incomplete report synthesis.
+- Replace the manual and run the confirmed questions again against the new version.
 
 Downloading the report as a PDF or spreadsheet is not part of the first version.
 
@@ -346,7 +289,8 @@ Downloading the report as a PDF or spreadsheet is not part of the first version.
 
 ### 6.6 AI Agent and Model Use
 
-UVTS uses one internal AI agent to support question generation, testing, and report recommendations. This agent is part of the UVTS service; it is not a chatbot shown to the writer.
+UVTS uses internal AI roles for question generation, manual evaluation, and report
+synthesis. They are part of the UVTS service and are not chatbots shown to the writer.
 
 #### Selected service and model
 
@@ -360,7 +304,7 @@ UVTS uses one internal AI agent to support question generation, testing, and rep
 #### What the agent can do
 
 - Read the text extracted from the uploaded manual.
-- Generate questions using the selected types, topics, viewpoints, and counts.
+- Generate the requested number of questions from the saved product image and description.
 - Identify the pieces of information needed for each question.
 - Check whether those pieces of information exist in the manual.
 - Connect found information to the correct manual pages.
@@ -401,7 +345,7 @@ This section records the first-release application stack and why it fits UVTS. I
 
 - **Build tool:** Vite
 - **Interface framework:** React with TypeScript
-- **Component system:** Astryx, following `uiux.md`
+- **Component system:** Astryx
 - **Application style:** Client-rendered single-page application
 - **Server communication:** A typed HTTP API generated from or checked against the FastAPI OpenAPI contract
 
@@ -417,11 +361,17 @@ The browser application owns the five-stage workspace, form interaction, progres
 
 The server owns PDF validation and extraction, saved workflow state, question generation, evaluation, evidence verification, report data, retries, and deletion. Long-running evaluation must not depend on the lifetime of one HTTP request.
 
-The exact database, durable-job system, and deployment platform remain implementation decisions. Whatever is selected must preserve work across a browser reload and must not lose completed question results when another question fails.
+PostgreSQL stores durable workflow state, Celery runs background work, Redis carries
+jobs and change notifications, and local private storage holds uploaded files. The
+deployment platform remains an environment-specific decision.
 
 ### 7.2 Why Vite and React fit UVTS
 
-UVTS is an interactive workspace rather than a public content website. The first release does not need search-engine indexing, server-rendered pages, React Server Components, or static generation. Its main interface stays on one page and changes in response to uploads, configuration, background progress, retries, and expandable evidence.
+UVTS is an interactive workspace rather than a public content website. The first
+release does not need search-engine indexing, server-rendered pages, React Server
+Components, or static generation. Its client-side route displays the current stage
+and changes in response to uploads, configuration, background progress, retries, and
+expandable evidence.
 
 Vite and React are selected because:
 
@@ -484,36 +434,43 @@ Next.js should be reconsidered if UVTS later adds public report pages, content p
 
 ## 8. Main Page
 
-UVTS uses one vertically ordered workspace instead of separate workflow screens. It contains five sections:
+UVTS uses one workspace with five ordered stages:
 
-1. **Upload manual:** The writer uploads one manual and sees when it is ready.
-2. **Generate questions:** The writer uses the suggested setup or opens the question settings, then selects Generate questions.
-3. **Review questions:** The writer reviews the generated list, generates a new set, or selects Evaluate questions.
+1. **Product setup:** The writer saves a product image, product description, and question count.
+2. **Review questions:** The writer generates and reviews a question set, then confirms it.
+3. **Upload manual:** The writer uploads one manual after confirmation and sees when it is ready.
 4. **Evaluation:** The writer sees how many questions have been checked and whether any question needs to be tried again.
 5. **Report:** The writer sees the overall results, individual questions, missing information, recommendations, and follow-up work.
 
-Completed sections remain visible above the current section in a compact state. Future sections stay visible as locked placeholders that explain what must happen first. When a stage completes, the next section opens below it; UVTS does not navigate to another workflow page. Reloading the page restores the current test and stage.
+The workspace overview labels the current, completed, and locked stages. Only the
+selected available stage is displayed. The writer can move back to a completed stage
+and forward again with the overview or Back and Continue actions. Reloading restores
+the current test and stage.
 
 ## 9. Important Product Rules
 
-1. One test uses one PDF manual.
-2. The manual can contain no more than 20 pages.
-3. One test can contain no more than 15 questions.
-4. Every question has a type, topic, and user viewpoint.
-5. Questions do not change after testing starts.
+1. Question generation uses the product image, description, and count, not the manual.
+2. Questions do not change after the writer confirms them.
+3. One test uses one PDF manual of no more than 20 pages.
+4. One test can contain no more than 15 questions.
+5. Every generated question has an ID and complete question text.
 6. The uploaded manual is the only source used to check whether information exists.
 7. Any result that says information was found must show a page reference.
 8. Results measure whether information exists, not its accuracy or writing quality.
 9. Every recommendation must be supported by a test result.
-10. Replacing or deleting a manual also removes its unfinished questions and connected results.
+10. Replacing or deleting a manual preserves product setup and confirmed questions, but removes evaluation and report data connected to that manual.
 
 ## 10. Privacy, Safety, and Ease of Use
 
-- Manuals and reports must be kept private.
-- Files and results must be protected while stored and transferred.
-- Uploaded manuals must not be used to train general AI models unless the user clearly agrees.
-- The writer must be able to delete a manual and its test results.
-- The product must explain how long files and reports are kept.
+- Anonymous session ownership protects tests, manuals, and reports from other browser
+  sessions.
+- Files are kept in private local storage and manual downloads use private, no-store
+  responses.
+- Manual text, the product image, and the product description are sent through the
+  configured OpenRouter models. Deployments must select provider data controls that
+  match their privacy and training policy.
+- The writer can remove a manual together with its connected evaluation and report.
+- Automatic file and report retention is not defined in the first release.
 - All main actions must work with a keyboard.
 - Results must use words and labels, not color alone.
 - Error messages and instructions must use plain language.
@@ -527,7 +484,6 @@ Completed sections remain visible above the current section in a compact state. 
 - Scanned PDFs that need text recognition
 - Checking whether statements in the manual are factually correct
 - Testing the product interface or watching real users
-- Editing individual generated questions
 - Comparing two versions of a manual
 - Team comments and approval steps
 - Downloading reports
@@ -541,7 +497,8 @@ UVTS should show its reasoning in simple terms: what information was needed, wha
 
 ### Questions may focus too much on information already in the manual
 
-UVTS should create some realistic edge-case questions that expose missing information. These questions must still relate to the product described in the manual.
+UVTS should create some realistic edge-case questions that expose missing information.
+These questions must still relate to the supplied product image and description.
 
 ### A strong result may create too much confidence
 
@@ -559,9 +516,9 @@ UVTS saves the exact questions used in each test. Questions never change after t
 
 The first version is ready for a small group of users when:
 
-- A suitable 1-to-20-page PDF can complete the full journey from upload to report.
+- A writer can complete the full journey from product setup and question confirmation to manual upload and report.
 - Unsupported PDFs fail safely and show a useful message.
-- The writer can create between 1 and 15 questions using all three question types.
+- The writer can save a product image, product description, and count between 1 and 15.
 - Every completed result shows an information-coverage status and real page evidence when information is found.
 - The report clearly shows missing information and useful recommendations.
 - Writers without technical knowledge can understand the setup and report during user testing.
@@ -572,8 +529,7 @@ The first version is ready for a small group of users when:
 
 - Support for scanned PDFs
 - Longer manuals and more than one manual per test
-- Custom question types, topics, and user viewpoints
-- Editing or adding individual questions
+- Question types, topics, user viewpoints, and per-type counts
 - Saved test setups
 - Comparing old and new versions of a manual
 - Downloadable and shareable reports
@@ -583,7 +539,7 @@ The first version is ready for a small group of users when:
 
 ## 15. Decisions Still Needed
 
-Before development begins, the team must decide:
+The following product and release decisions remain open:
 
 - Whether users need an account
 - The largest allowed PDF file size
@@ -591,6 +547,4 @@ Before development begins, the team must decide:
 - Whether a writer can stop a test while it is running
 - The expected waiting time for question generation and testing
 - How the team will check that UVTS results are accurate enough for release
-- Which database and durable-job system will preserve tests and completed results
-- How the Vite application and FastAPI service will be hosted and connected in each environment
 - Which browser versions the first release must support
