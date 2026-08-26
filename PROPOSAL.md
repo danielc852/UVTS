@@ -84,23 +84,28 @@ This removes the containers but keeps their data in Docker volumes.
 ## Architecture and key decisions
 
 The browser app uses React and TypeScript. The API uses FastAPI. Celery handles slow
-background work, PostgreSQL stores workflow data, Redis carries jobs and progress
-events, local private storage holds uploads, and OpenRouter provides model access.
+background work, PostgreSQL stores workflow data, Redis carries job messages and
+state-change notifications, local private storage holds uploads, and OpenRouter
+provides model access.
 
 ### 1. Modular monolith and typed API
 
 The backend is one application divided into routes, services, domain rules, and
 adapters. FastAPI generates an OpenAPI contract, which generates the browser's
 TypeScript types. This is easier to run and change than several small services while
-still keeping responsibilities clear. The trade-off is that parts cannot be deployed
-or scaled independently.
+still keeping responsibilities clear. The API and worker can run and scale as separate
+processes, but they share one backend codebase and release cycle instead of evolving
+as independent services.
 
 ### 2. Durable state and background jobs
 
 PostgreSQL is the source of truth. Celery performs slow PDF and AI work, while Redis
-carries jobs and progress events. The browser refetches current data when an event
-arrives. This avoids long-running HTTP requests and makes retries safer, but it adds
-the operational cost of running a database, Redis, and a worker.
+carries job messages and state-change notifications. When a notification arrives, the
+browser refetches the current state from the API instead of treating the notification
+as data. If a notification is missed or the browser reconnects, the durable state is
+still available in PostgreSQL. This avoids long-running HTTP requests and makes
+recovery and retries safer, but it adds the operational cost of running a database,
+Redis, and a worker.
 
 ### 3. Verified AI output
 
