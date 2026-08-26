@@ -75,7 +75,16 @@ If Docker Desktop is not already installed, download it from the official
 follow the installation instructions for your operating system. Open Docker Desktop
 after installation and wait until it reports that Docker is running before continuing.
 
-Linux users may install Docker Engine with the Docker Compose plugin instead.
+Linux users who do not want Docker Desktop may instead follow Docker's official
+[Docker Engine installation guide](https://docs.docker.com/engine/install/) for their
+distribution, then install the
+[Docker Compose plugin](https://docs.docker.com/compose/install/linux/). Make sure the
+Docker service is running and verify both tools before continuing:
+
+```sh
+docker --version
+docker compose version
+```
 
 ### 2. Download and open the repository
 
