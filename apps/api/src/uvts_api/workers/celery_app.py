@@ -1,6 +1,6 @@
 from typing import Any
 
-from celery import Celery, signals  # type: ignore[import-untyped]
+from celery import Celery, signals
 
 from uvts_api.core.config import get_settings
 from uvts_api.core.logging import configure_logging, reset_log_context, set_log_context

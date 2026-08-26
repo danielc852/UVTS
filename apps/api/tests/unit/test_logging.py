@@ -1,8 +1,10 @@
+import inspect
 import json
 import logging
 import sys
 from io import StringIO
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
@@ -24,7 +26,7 @@ from uvts_api.workers.celery_app import bind_task_logging_context, clear_task_lo
 
 def _render_record(record: logging.LogRecord) -> dict[str, object]:
     formatter = SafeJsonFormatter(service="test-service", environment="test")
-    return json.loads(formatter.format(record))
+    return cast(dict[str, object], json.loads(formatter.format(record)))
 
 
 def test_formatter_renders_safe_extra_fields_and_context() -> None:
@@ -149,6 +151,7 @@ def test_configure_logging_outputs_json_with_extra_fields() -> None:
     configure_logging(service="uvts-api", environment="test", level="WARNING")
     stream = StringIO()
     root_handler = logging.getLogger().handlers[0]
+    assert isinstance(root_handler, logging.StreamHandler)
     try:
         root_handler.setStream(stream)
         logging.getLogger("uvts_api.test").warning(
@@ -242,7 +245,12 @@ async def test_unexpected_api_error_is_logged_with_request_context(
     request.state.request_id = "request-1"
     error = RuntimeError("task failed")
 
-    response = await app.exception_handlers[Exception](request, error)
+    response_or_awaitable = app.exception_handlers[Exception](request, error)
+    response = (
+        await response_or_awaitable
+        if inspect.isawaitable(response_or_awaitable)
+        else response_or_awaitable
+    )
 
     assert response.status_code == 500
     error_logger.error.assert_called_once_with(

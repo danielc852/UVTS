@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getWorkspaceFixture } from '../../mocks/workspaces';
 import { renderApp } from '../../test/render-app';
@@ -30,6 +30,10 @@ vi.mock('./api', () => ({
 }));
 
 describe('QuestionsSection', () => {
+  beforeAll(async () => {
+    await import('./QuestionsSection');
+  });
+
   beforeEach(() => {
     questionApi.confirm.mockReset();
     questionApi.generate.mockReset();
